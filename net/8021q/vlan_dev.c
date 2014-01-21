@@ -566,23 +566,6 @@ static const struct header_ops vlan_passthru_header_ops = {
 	.parse	 = eth_header_parse,
 };
 
-static int vlan_passthru_hard_header(struct sk_buff *skb, struct net_device *dev,
-				     unsigned short type,
-				     const void *daddr, const void *saddr,
-				     unsigned int len)
-{
-	struct vlan_dev_priv *vlan = vlan_dev_priv(dev);
-	struct net_device *real_dev = vlan->real_dev;
-
-	return dev_hard_header(skb, real_dev, type, daddr, saddr, len);
-}
-
-static const struct header_ops vlan_passthru_header_ops = {
-	.create	 = vlan_passthru_hard_header,
-	.rebuild = dev_rebuild_header,
-	.parse	 = eth_header_parse,
-};
-
 static struct device_type vlan_type = {
 	.name	= "vlan",
 };
