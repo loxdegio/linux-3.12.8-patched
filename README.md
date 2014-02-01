@@ -3,7 +3,7 @@ linux-3.13.x-patched
 
 Versione del geek kernel con le patch scelte da me
 
-bld uksm gentoo suse zen brand squeue
+bfq bld uksm gentoo suse zen brand
 
 Se vuoi scaricare questo repo e rimanere aggiornato con tutte le modifiche digita su terminale:
 
