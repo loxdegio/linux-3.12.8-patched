@@ -49,6 +49,11 @@ static unsigned int _major = 0;
 static DEFINE_IDR(_minor_idr);
 
 static DEFINE_SPINLOCK(_minor_lock);
+
+static void do_deferred_remove(struct work_struct *w);
+
+static DECLARE_WORK(deferred_remove_work, do_deferred_remove);
+
 /*
  * For bio-based dm.
  * One of these is allocated per bio.
@@ -116,6 +121,7 @@ EXPORT_SYMBOL_GPL(dm_get_rq_mapinfo);
 #define DMF_DELETING 4
 #define DMF_NOFLUSH_SUSPENDING 5
 #define DMF_MERGE_IS_OPTIONAL 6
+#define DMF_DEFERRED_REMOVE 7
 
 /*
  * A dummy definition to make RCU happy.
@@ -299,6 +305,8 @@ out_free_io_cache:
 
 static void local_exit(void)
 {
+	flush_scheduled_work();
+
 	kmem_cache_destroy(_rq_tio_cache);
 	kmem_cache_destroy(_io_cache);
 	unregister_blkdev(_major, _name);
@@ -376,16 +384,25 @@ int dm_deleting_md(struct mapped_device *md)
 static int dm_blk_open(struct block_device *bdev, fmode_t mode)
 {
 	struct mapped_device *md;
+	int retval = 0;
 
 	spin_lock(&_minor_lock);
 
 	md = bdev->bd_disk->private_data;
-	if (!md)
+	if (!md) {
+		retval = -ENXIO;
 		goto out;
+	}
 
 	if (test_bit(DMF_FREEING, &md->flags) ||
 	    dm_deleting_md(md)) {
 		md = NULL;
+		retval = -ENXIO;
+		goto out;
+	}
+	if (get_disk_ro(md->disk) && (mode & FMODE_WRITE)) {
+		md = NULL;
+		retval = -EROFS;
 		goto out;
 	}
 
@@ -395,7 +412,7 @@ static int dm_blk_open(struct block_device *bdev, fmode_t mode)
 out:
 	spin_unlock(&_minor_lock);
 
-	return md ? 0 : -ENXIO;
+	return retval;
 }
 
 static void dm_blk_close(struct gendisk *disk, fmode_t mode)
@@ -404,7 +421,10 @@ static void dm_blk_close(struct gendisk *disk, fmode_t mode)
 
 	spin_lock(&_minor_lock);
 
-	atomic_dec(&md->open_count);
+	if (atomic_dec_and_test(&md->open_count) &&
+	    (test_bit(DMF_DEFERRED_REMOVE, &md->flags)))
+		schedule_work(&deferred_remove_work);
+
 	dm_put(md);
 
 	spin_unlock(&_minor_lock);
@@ -418,20 +438,45 @@ int dm_open_count(struct mapped_device *md)
 /*
  * Guarantees nothing is using the device before it's deleted.
  */
-int dm_lock_for_deletion(struct mapped_device *md)
+int dm_lock_for_deletion(struct mapped_device *md, bool mark_deferred, bool only_deferred)
 {
 	int r = 0;
 
 	spin_lock(&_minor_lock);
 
-	if (dm_open_count(md))
+	if (dm_open_count(md)) {
 		r = -EBUSY;
+		if (mark_deferred)
+			set_bit(DMF_DEFERRED_REMOVE, &md->flags);
+	} else if (only_deferred && !test_bit(DMF_DEFERRED_REMOVE, &md->flags))
+		r = -EEXIST;
 	else
 		set_bit(DMF_DELETING, &md->flags);
 
 	spin_unlock(&_minor_lock);
 
 	return r;
+}
+
+int dm_cancel_deferred_remove(struct mapped_device *md)
+{
+	int r = 0;
+
+	spin_lock(&_minor_lock);
+
+	if (test_bit(DMF_DELETING, &md->flags))
+		r = -EBUSY;
+	else
+		clear_bit(DMF_DEFERRED_REMOVE, &md->flags);
+
+	spin_unlock(&_minor_lock);
+
+	return r;
+}
+
+static void do_deferred_remove(struct work_struct *w)
+{
+	dm_deferred_remove();
 }
 
 sector_t dm_get_size(struct mapped_device *md)
@@ -466,19 +511,25 @@ retry:
 	if (!map || !dm_table_get_size(map))
 		goto out;
 
-	/* We only support devices that have a single target */
-	if (dm_table_get_num_targets(map) != 1)
-		goto out;
-
-	tgt = dm_table_get_target(map, 0);
-
 	if (dm_suspended_md(md)) {
 		r = -EAGAIN;
 		goto out;
 	}
 
-	if (tgt->type->ioctl)
-		r = tgt->type->ioctl(tgt, cmd, arg);
+	if (cmd == BLKRRPART) {
+		/* Emulate Re-read partitions table */
+		kobject_uevent(&disk_to_dev(md->disk)->kobj, KOBJ_CHANGE);
+		r = 0;
+	} else {
+		/* We only support devices that have a single target */
+		if (dm_table_get_num_targets(map) != 1)
+			goto out;
+
+		tgt = dm_table_get_target(map, 0);
+
+		if (tgt->type->ioctl)
+			r = tgt->type->ioctl(tgt, cmd, arg);
+	}
 
 out:
 	dm_put_live_table(md, srcu_idx);
@@ -2252,6 +2303,10 @@ static struct dm_table *__bind(struct mapped_device *md, struct dm_table *t,
 		set_bit(DMF_MERGE_IS_OPTIONAL, &md->flags);
 	else
 		clear_bit(DMF_MERGE_IS_OPTIONAL, &md->flags);
+	if (!(dm_table_get_mode(t) & FMODE_WRITE))
+		set_disk_ro(md->disk, 1);
+	else
+		set_disk_ro(md->disk, 0);
 	dm_sync_table(md);
 
 	return old_map;
@@ -2863,6 +2918,7 @@ struct gendisk *dm_disk(struct mapped_device *md)
 {
 	return md->disk;
 }
+EXPORT_SYMBOL_GPL(dm_disk);
 
 struct kobject *dm_kobject(struct mapped_device *md)
 {
@@ -2892,6 +2948,11 @@ struct mapped_device *dm_get_from_kobject(struct kobject *kobj)
 int dm_suspended_md(struct mapped_device *md)
 {
 	return test_bit(DMF_SUSPENDED, &md->flags);
+}
+
+int dm_test_deferred_remove_flag(struct mapped_device *md)
+{
+	return test_bit(DMF_DEFERRED_REMOVE, &md->flags);
 }
 
 int dm_suspended(struct dm_target *ti)

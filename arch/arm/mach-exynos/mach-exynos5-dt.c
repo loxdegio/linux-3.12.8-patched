@@ -11,17 +11,34 @@
 
 #include <linux/of_platform.h>
 #include <linux/of_fdt.h>
-#include <linux/memblock.h>
 #include <linux/io.h>
-#include <linux/clocksource.h>
+#include <linux/dma-mapping.h>
 
 #include <asm/mach/arch.h>
 #include <mach/regs-pmu.h>
-
-#include <plat/cpu.h>
 #include <plat/mfc.h>
 
 #include "common.h"
+
+static u64 dma_mask64 = DMA_BIT_MASK(64);
+
+static int exynos5250_platform_notifier(struct notifier_block *nb,
+				  unsigned long event, void *__dev)
+{
+	struct device *dev = __dev;
+
+	if (event != BUS_NOTIFY_ADD_DEVICE)
+		return NOTIFY_DONE;
+
+	dev->dma_mask = &dma_mask64;
+	dev->coherent_dma_mask = DMA_BIT_MASK(64);
+
+	return NOTIFY_OK;
+}
+
+static struct notifier_block exynos5250_platform_nb = {
+	.notifier_call = exynos5250_platform_notifier,
+};
 
 static void __init exynos5_dt_machine_init(void)
 {
@@ -46,6 +63,11 @@ static void __init exynos5_dt_machine_init(void)
 			}
 		}
 	}
+
+	exynos_cpuidle_init();
+
+	if (of_machine_is_compatible("samsung,exynos5250"))
+		bus_register_notifier(&platform_bus_type, &exynos5250_platform_nb);
 
 	of_platform_populate(NULL, of_default_bus_match_table, NULL, NULL);
 }
@@ -76,7 +98,6 @@ DT_MACHINE_START(EXYNOS5_DT, "SAMSUNG EXYNOS5 (Flattened Device Tree)")
 	.map_io		= exynos_init_io,
 	.init_machine	= exynos5_dt_machine_init,
 	.init_late	= exynos_init_late,
-	.init_time	= exynos_init_time,
 	.dt_compat	= exynos5_dt_compat,
 	.restart        = exynos5_restart,
 	.reserve	= exynos5_reserve,

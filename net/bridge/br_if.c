@@ -174,6 +174,7 @@ void br_dev_delete(struct net_device *dev, struct list_head *head)
 
 	br_fdb_delete_by_port(br, NULL, 1);
 
+	br_vlan_flush(br);
 	del_timer_sync(&br->gc_timer);
 
 	br_sysfs_delbr(br->dev);
@@ -243,12 +244,19 @@ int br_add_bridge(struct net *net, const char *name)
 	if (!dev)
 		return -ENOMEM;
 
+	if (!try_module_get(THIS_MODULE)) {
+		free_netdev(dev);
+		return -ENOENT;
+	}
+
 	dev_net_set(dev, net);
 	dev->rtnl_link_ops = &br_link_ops;
 
 	res = register_netdev(dev);
-	if (res)
+	if (res) {
 		free_netdev(dev);
+		module_put(THIS_MODULE);
+	}
 	return res;
 }
 
@@ -276,6 +284,8 @@ int br_del_bridge(struct net *net, const char *name)
 		br_dev_delete(dev, NULL);
 
 	rtnl_unlock();
+	if (ret == 0)
+		module_put(THIS_MODULE);
 	return ret;
 }
 

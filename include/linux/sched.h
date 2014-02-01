@@ -22,6 +22,7 @@ struct sched_param {
 #include <linux/errno.h>
 #include <linux/nodemask.h>
 #include <linux/mm_types.h>
+#include <linux/preempt_mask.h>
 
 #include <asm/page.h>
 #include <asm/ptrace.h>
@@ -221,6 +222,8 @@ extern asmlinkage void schedule_tail(struct task_struct *prev);
 extern void init_idle(struct task_struct *idle, int cpu);
 extern void init_idle_bootup_task(struct task_struct *idle);
 
+extern int runqueue_is_locked(int cpu);
+
 #if defined(CONFIG_SMP) && defined(CONFIG_NO_HZ_COMMON)
 extern void nohz_balance_enter_idle(int cpu);
 extern void set_cpu_sd_state_idle(void);
@@ -279,6 +282,14 @@ static inline void touch_all_softlockup_watchdogs(void)
 {
 }
 static inline void lockup_detector_init(void)
+{
+}
+#endif
+
+#ifdef CONFIG_DETECT_HUNG_TASK
+void reset_hung_task_detector(void);
+#else
+static inline void reset_hung_task_detector(void)
 {
 }
 #endif
@@ -429,6 +440,12 @@ struct task_cputime {
 		.sum_exec_runtime = 0,				\
 	}
 
+#ifdef CONFIG_PREEMPT_COUNT
+#define PREEMPT_DISABLED	(1 + PREEMPT_ENABLED)
+#else
+#define PREEMPT_DISABLED	PREEMPT_ENABLED
+#endif
+
 /*
  * Disable preemption until the scheduler is running.
  * Reset by start_kernel()->sched_init()->init_idle().
@@ -436,7 +453,7 @@ struct task_cputime {
  * We include PREEMPT_ACTIVE to avoid cond_resched() from working
  * before the scheduler is active -- see should_resched().
  */
-#define INIT_PREEMPT_COUNT	(1 + PREEMPT_ACTIVE)
+#define INIT_PREEMPT_COUNT	(PREEMPT_DISABLED + PREEMPT_ACTIVE)
 
 /**
  * struct thread_group_cputimer - thread group interval timer counts
@@ -770,6 +787,7 @@ enum cpu_idle_type {
 #define SD_ASYM_PACKING		0x0800  /* Place busy groups earlier in the domain */
 #define SD_PREFER_SIBLING	0x1000	/* Prefer to place tasks in a sibling domain */
 #define SD_OVERLAP		0x2000	/* sched_domains of this level overlap */
+#define SD_NUMA			0x4000	/* cross-node balancing */
 
 extern int __weak arch_sd_sibiling_asym_packing(void);
 
@@ -811,7 +829,9 @@ struct sched_domain {
 	unsigned int balance_interval;	/* initialise to 1. units in ms. */
 	unsigned int nr_balance_failed; /* initialise to 0 */
 
-	u64 last_update;
+	/* idle_balance() stats */
+	u64 max_newidle_lb_cost;
+	unsigned long next_decay_max_lb_cost;
 
 #ifdef CONFIG_SCHEDSTATS
 	/* load_balance() stats */
@@ -910,7 +930,8 @@ struct pipe_inode_info;
 struct uts_namespace;
 
 struct load_weight {
-	unsigned long weight, inv_weight;
+	unsigned long weight;
+	u32 inv_weight;
 };
 
 struct sched_avg {
@@ -1025,39 +1046,22 @@ struct task_struct {
 	unsigned int flags;	/* per process flags, defined below */
 	unsigned int ptrace;
 
-#if defined(CONFIG_SMP) || defined(CONFIG_SCHED_BFS)
+#ifdef CONFIG_SMP
 	struct llist_node wake_entry;
 	int on_cpu;
-#endif
-#ifdef CONFIG_SMP
 	struct task_struct *last_wakee;
 	unsigned long wakee_flips;
 	unsigned long wakee_flip_decay_ts;
+
+	int wake_cpu;
 #endif
-#ifndef CONFIG_SCHED_BFS
 	int on_rq;
-#endif
 
 	int prio, static_prio, normal_prio;
 	unsigned int rt_priority;
-#ifdef CONFIG_SCHED_BFS
-	int time_slice;
-	u64 deadline;
-	struct list_head run_list;
-	u64 last_ran;
-	u64 sched_time; /* sched_clock time spent running */
-#ifdef CONFIG_SMP
-	bool sticky; /* Soft affined flag */
-#endif
-#ifdef CONFIG_HOTPLUG_CPU
-	bool zerobound; /* Bound to CPU0 for hotplug */
-#endif
-	unsigned long rt_timeout;
-#else /* CONFIG_SCHED_BFS */
 	const struct sched_class *sched_class;
 	struct sched_entity se;
 	struct sched_rt_entity rt;
-#endif
 #ifdef CONFIG_CGROUP_SCHED
 	struct task_group *sched_task_group;
 #endif
@@ -1067,15 +1071,6 @@ struct task_struct {
 	struct hlist_head preempt_notifiers;
 #endif
 
-	/*
-	 * fpu_counter contains the number of consecutive context switches
-	 * that the FPU is used. If this is over a threshold, the lazy fpu
-	 * saving becomes unlazy to save the trap. This is an unsigned char
-	 * so that after 256 times the counter wraps and the behavior turns
-	 * lazy again; this to deal with bursty apps that only use FPU for
-	 * a short time
-	 */
-	unsigned char fpu_counter;
 #ifdef CONFIG_BLK_DEV_IO_TRACE
 	unsigned int btrace_seq;
 #endif
@@ -1171,9 +1166,6 @@ struct task_struct {
 	int __user *clear_child_tid;		/* CLONE_CHILD_CLEARTID */
 
 	cputime_t utime, stime, utimescaled, stimescaled;
-#ifdef CONFIG_SCHED_BFS
-	unsigned long utime_pc, stime_pc;
-#endif
 	cputime_t gtime;
 #ifndef CONFIG_VIRT_CPU_ACCOUNTING_NATIVE
 	struct cputime prev_cputime;
@@ -1348,10 +1340,41 @@ struct task_struct {
 #endif
 #ifdef CONFIG_NUMA_BALANCING
 	int numa_scan_seq;
-	int numa_migrate_seq;
 	unsigned int numa_scan_period;
+	unsigned int numa_scan_period_max;
+	int numa_preferred_nid;
+	int numa_migrate_deferred;
+	unsigned long numa_migrate_retry;
 	u64 node_stamp;			/* migration stamp  */
 	struct callback_head numa_work;
+
+	struct list_head numa_entry;
+	struct numa_group *numa_group;
+
+	/*
+	 * Exponential decaying average of faults on a per-node basis.
+	 * Scheduling placement decisions are made based on the these counts.
+	 * The values remain static for the duration of a PTE scan
+	 */
+	unsigned long *numa_faults;
+	unsigned long total_numa_faults;
+
+	/*
+	 * numa_faults_buffer records faults per node during the current
+	 * scan window. When the scan completes, the counts in numa_faults
+	 * decay and these values are copied.
+	 */
+	unsigned long *numa_faults_buffer;
+
+	/*
+	 * numa_faults_locality tracks if faults recorded during the last
+	 * scan window were remote/local. The task scan period is adapted
+	 * based on the locality of the faults with different weights
+	 * depending on whether they were shared or private faults
+	 */
+	unsigned long numa_faults_locality[2];
+
+	unsigned long numa_pages_migrated;
 #endif /* CONFIG_NUMA_BALANCING */
 
 	struct rcu_head rcu;
@@ -1433,75 +1456,34 @@ struct task_struct {
 #endif
 };
 
-#ifdef CONFIG_SCHED_BFS
-bool grunqueue_is_locked(void);
-void grq_unlock_wait(void);
-void cpu_scaling(int cpu);
-void cpu_nonscaling(int cpu);
-bool above_background_load(void);
-#define tsk_seruntime(t)		((t)->sched_time)
-#define tsk_rttimeout(t)		((t)->rt_timeout)
-
-static inline void tsk_cpus_current(struct task_struct *p)
-{
-}
-
-static inline int runqueue_is_locked(int cpu)
-{
-	return grunqueue_is_locked();
-}
-
-void print_scheduler_version(void);
-
-static inline bool iso_task(struct task_struct *p)
-{
-	return (p->policy == SCHED_ISO);
-}
-#else /* CFS */
-extern int runqueue_is_locked(int cpu);
-static inline void cpu_scaling(int cpu)
-{
-}
-
-static inline void cpu_nonscaling(int cpu)
-{
-}
-#define tsk_seruntime(t)	((t)->se.sum_exec_runtime)
-#define tsk_rttimeout(t)	((t)->rt.timeout)
-
-static inline void tsk_cpus_current(struct task_struct *p)
-{
-	p->nr_cpus_allowed = current->nr_cpus_allowed;
-}
-
-static inline void print_scheduler_version(void)
-{
-	printk(KERN_INFO"CFS CPU scheduler.\n");
-}
-
-static inline bool iso_task(struct task_struct *p)
-{
-	return false;
-}
-
-/* Anyone feel like implementing this? */
-static inline bool above_background_load(void)
-{
-	return false;
-}
-#endif /* CONFIG_SCHED_BFS */
-
 /* Future-safe accessor for struct task_struct's cpus_allowed. */
 #define tsk_cpus_allowed(tsk) (&(tsk)->cpus_allowed)
 
+#define TNF_MIGRATED	0x01
+#define TNF_NO_GROUP	0x02
+#define TNF_SHARED	0x04
+#define TNF_FAULT_LOCAL	0x08
+
 #ifdef CONFIG_NUMA_BALANCING
-extern void task_numa_fault(int node, int pages, bool migrated);
+extern void task_numa_fault(int last_node, int node, int pages, int flags);
+extern pid_t task_numa_group_id(struct task_struct *p);
 extern void set_numabalancing_state(bool enabled);
+extern void task_numa_free(struct task_struct *p);
+
+extern unsigned int sysctl_numa_balancing_migrate_deferred;
 #else
-static inline void task_numa_fault(int node, int pages, bool migrated)
+static inline void task_numa_fault(int last_node, int node, int pages,
+				   int flags)
 {
 }
+static inline pid_t task_numa_group_id(struct task_struct *p)
+{
+	return 0;
+}
 static inline void set_numabalancing_state(bool enabled)
+{
+}
+static inline void task_numa_free(struct task_struct *p)
 {
 }
 #endif
@@ -1922,7 +1904,7 @@ extern unsigned long long
 task_sched_runtime(struct task_struct *task);
 
 /* sched_exec is called by processes performing an exec */
-#if defined(CONFIG_SMP) && !defined(CONFIG_SCHED_BFS)
+#ifdef CONFIG_SMP
 extern void sched_exec(void);
 #else
 #define sched_exec()   {}
@@ -2056,7 +2038,7 @@ extern void wake_up_new_task(struct task_struct *tsk);
 #else
  static inline void kick_process(struct task_struct *tsk) { }
 #endif
-extern void sched_fork(struct task_struct *p);
+extern void sched_fork(unsigned long clone_flags, struct task_struct *p);
 extern void sched_dead(struct task_struct *p);
 
 extern void proc_caches_init(void);
@@ -2483,11 +2465,6 @@ static inline int signal_pending_state(long state, struct task_struct *p)
 	return (state & TASK_INTERRUPTIBLE) || __fatal_signal_pending(p);
 }
 
-static inline int need_resched(void)
-{
-	return unlikely(test_thread_flag(TIF_NEED_RESCHED));
-}
-
 /*
  * cond_resched() and cond_resched_lock(): latency reduction via
  * explicit rescheduling in places that are safe. The return
@@ -2650,6 +2627,11 @@ static inline bool __must_check current_clr_polling_and_test(void)
 }
 #endif
 
+static __always_inline bool need_resched(void)
+{
+	return unlikely(tif_need_resched());
+}
+
 /*
  * Thread group CPU time accounting.
  */
@@ -2691,6 +2673,11 @@ static inline unsigned int task_cpu(const struct task_struct *p)
 	return task_thread_info(p)->cpu;
 }
 
+static inline int task_node(const struct task_struct *p)
+{
+	return cpu_to_node(task_cpu(p));
+}
+
 extern void set_task_cpu(struct task_struct *p, unsigned int cpu);
 
 #else
@@ -2700,7 +2687,7 @@ static inline unsigned int task_cpu(const struct task_struct *p)
 	return 0;
 }
 
-static inline void set_task_cpu(struct task_struct *p, int cpu)
+static inline void set_task_cpu(struct task_struct *p, unsigned int cpu)
 {
 }
 

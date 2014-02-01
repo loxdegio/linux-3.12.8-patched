@@ -43,6 +43,7 @@
 #include "xattr.h"
 #include "acl.h"
 #include "truncate.h"
+#include "richacl.h"
 
 #include <trace/events/ext4.h>
 
@@ -2166,6 +2167,9 @@ static int mpage_map_one_extent(handle_t *handle, struct mpage_da_data *mpd)
  *
  * @handle - handle for journal operations
  * @mpd - extent to map
+ * @give_up_on_write - we set this to true iff there is a fatal error and there
+ *                     is no hope of writing the data. The caller should discard
+ *                     dirty pages to avoid infinite loops.
  *
  * The function maps extent starting at mpd->lblk of length mpd->len. If it is
  * delayed, blocks are allocated, if it is unwritten, we may need to convert
@@ -2283,6 +2287,7 @@ static int mpage_prepare_extent_to_map(struct mpage_da_data *mpd)
 	struct address_space *mapping = mpd->inode->i_mapping;
 	struct pagevec pvec;
 	unsigned int nr_pages;
+	long left = mpd->wbc->nr_to_write;
 	pgoff_t index = mpd->first_page;
 	pgoff_t end = mpd->last_page;
 	int tag;
@@ -2316,6 +2321,17 @@ static int mpage_prepare_extent_to_map(struct mpage_da_data *mpd)
 			 * because we have a reference on the page.
 			 */
 			if (page->index > end)
+				goto out;
+
+			/*
+			 * Accumulated enough dirty pages? This doesn't apply
+			 * to WB_SYNC_ALL mode. For integrity sync we have to
+			 * keep going because someone may be concurrently
+			 * dirtying pages, and we might have synced a lot of
+			 * newly appeared dirty pages, but have not synced all
+			 * of the old dirty pages.
+			 */
+			if (mpd->wbc->sync_mode == WB_SYNC_NONE && left <= 0)
 				goto out;
 
 			/* If we can't merge this page, we are done. */
@@ -2352,19 +2368,7 @@ static int mpage_prepare_extent_to_map(struct mpage_da_data *mpd)
 			if (err <= 0)
 				goto out;
 			err = 0;
-
-			/*
-			 * Accumulated enough dirty pages? This doesn't apply
-			 * to WB_SYNC_ALL mode. For integrity sync we have to
-			 * keep going because someone may be concurrently
-			 * dirtying pages, and we might have synced a lot of
-			 * newly appeared dirty pages, but have not synced all
-			 * of the old dirty pages.
-			 */
-			if (mpd->wbc->sync_mode == WB_SYNC_NONE &&
-			    mpd->next_page - mpd->first_page >=
-							mpd->wbc->nr_to_write)
-				goto out;
+			left--;
 		}
 		pagevec_release(&pvec);
 		cond_resched();
@@ -2408,16 +2412,15 @@ static int ext4_writepages(struct address_space *mapping,
 	 * because that could violate lock ordering on umount
 	 */
 	if (!mapping->nrpages || !mapping_tagged(mapping, PAGECACHE_TAG_DIRTY))
-		return 0;
+		goto out_writepages;
 
 	if (ext4_should_journal_data(inode)) {
 		struct blk_plug plug;
-		int ret;
 
 		blk_start_plug(&plug);
 		ret = write_cache_pages(mapping, wbc, __writepage, mapping);
 		blk_finish_plug(&plug);
-		return ret;
+		goto out_writepages;
 	}
 
 	/*
@@ -2430,8 +2433,10 @@ static int ext4_writepages(struct address_space *mapping,
 	 * *never* be called, so if that ever happens, we would want
 	 * the stack trace.
 	 */
-	if (unlikely(sbi->s_mount_flags & EXT4_MF_FS_ABORTED))
-		return -EROFS;
+	if (unlikely(sbi->s_mount_flags & EXT4_MF_FS_ABORTED)) {
+		ret = -EROFS;
+		goto out_writepages;
+	}
 
 	if (ext4_should_dioread_nolock(inode)) {
 		/*
@@ -4068,6 +4073,9 @@ struct inode *ext4_iget(struct super_block *sb, unsigned long ino)
 
 	ext4_clear_state_flags(ei);	/* Only relevant on 32-bit archs */
 	ei->i_inline_off = 0;
+#ifdef CONFIG_EXT4_FS_RICHACL
+	ei->i_richacl = EXT4_RICHACL_NOT_CACHED;
+#endif
 	ei->i_dir_start_lookup = 0;
 	ei->i_dtime = le32_to_cpu(raw_inode->i_dtime);
 	/* We now have enough fields to check if the inode was active or not.
@@ -4539,7 +4547,11 @@ int ext4_setattr(struct dentry *dentry, struct iattr *attr)
 	int orphan = 0;
 	const unsigned int ia_valid = attr->ia_valid;
 
-	error = inode_change_ok(inode, attr);
+	if (EXT4_IS_RICHACL(inode))
+		error = richacl_inode_change_ok(inode, attr,
+						ext4_richacl_permission);
+	else
+		error = inode_change_ok(inode, attr);
 	if (error)
 		return error;
 
@@ -4658,9 +4670,12 @@ int ext4_setattr(struct dentry *dentry, struct iattr *attr)
 	if (orphan && inode->i_nlink)
 		ext4_orphan_del(NULL, inode);
 
-	if (!rc && (ia_valid & ATTR_MODE))
-		rc = ext4_acl_chmod(inode);
-
+	if (!rc && (ia_valid & ATTR_MODE)) {
+		if (EXT4_IS_RICHACL(inode))
+			rc = ext4_richacl_chmod(inode);
+		else
+			rc = ext4_acl_chmod(inode);
+	}
 err_out:
 	ext4_std_error(inode->i_sb, error);
 	if (!error)
@@ -4678,6 +4693,15 @@ int ext4_getattr(struct vfsmount *mnt, struct dentry *dentry,
 	generic_fillattr(inode, stat);
 
 	/*
+	 * If there is inline data in the inode, the inode will normally not
+	 * have data blocks allocated (it may have an external xattr block).
+	 * Report at least one sector for such files, so tools like tar, rsync,
+	 * others doen't incorrectly think the file is completely sparse.
+	 */
+	if (unlikely(ext4_has_inline_data(inode)))
+		stat->blocks += (stat->size + 511) >> 9;
+
+	/*
 	 * We can't update i_blocks if the block allocation is delayed
 	 * otherwise in the case of system crash before the real block
 	 * allocation is done, we will have i_blocks inconsistent with
@@ -4688,9 +4712,8 @@ int ext4_getattr(struct vfsmount *mnt, struct dentry *dentry,
 	 * blocks for this file.
 	 */
 	delalloc_blocks = EXT4_C2B(EXT4_SB(inode->i_sb),
-				EXT4_I(inode)->i_reserved_data_blocks);
-
-	stat->blocks += delalloc_blocks << (inode->i_sb->s_blocksize_bits-9);
+				   EXT4_I(inode)->i_reserved_data_blocks);
+	stat->blocks += delalloc_blocks << (inode->i_sb->s_blocksize_bits - 9);
 	return 0;
 }
 

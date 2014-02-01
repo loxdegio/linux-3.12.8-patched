@@ -105,7 +105,8 @@ static void sd_unlock_native_capacity(struct gendisk *disk);
 static int  sd_probe(struct device *);
 static int  sd_remove(struct device *);
 static void sd_shutdown(struct device *);
-static int sd_suspend(struct device *);
+static int sd_suspend_system(struct device *);
+static int sd_suspend_runtime(struct device *);
 static int sd_resume(struct device *);
 static void sd_rescan(struct device *);
 static int sd_done(struct scsi_cmnd *);
@@ -484,11 +485,11 @@ static struct class sd_disk_class = {
 };
 
 static const struct dev_pm_ops sd_pm_ops = {
-	.suspend		= sd_suspend,
+	.suspend		= sd_suspend_system,
 	.resume			= sd_resume,
-	.poweroff		= sd_suspend,
+	.poweroff		= sd_suspend_system,
 	.restore		= sd_resume,
-	.runtime_suspend	= sd_suspend,
+	.runtime_suspend	= sd_suspend_runtime,
 	.runtime_resume		= sd_resume,
 };
 
@@ -829,7 +830,7 @@ static int sd_setup_write_same_cmnd(struct scsi_device *sdp, struct request *rq)
 
 static int scsi_setup_flush_cmnd(struct scsi_device *sdp, struct request *rq)
 {
-	rq->timeout = SD_FLUSH_TIMEOUT;
+	rq->timeout *= SD_FLUSH_TIMEOUT_MULTIPLIER;
 	rq->retries = SD_MAX_RETRIES;
 	rq->cmd[0] = SYNCHRONIZE_CACHE;
 	rq->cmd_len = 10;
@@ -1002,7 +1003,7 @@ static int sd_prep_fn(struct request_queue *q, struct request *rq)
 		SCpnt->cmnd[0] = READ_6;
 		SCpnt->sc_data_direction = DMA_FROM_DEVICE;
 	} else {
-		scmd_printk(KERN_ERR, SCpnt, "Unknown command %x\n", rq->cmd_flags);
+		scmd_printk(KERN_ERR, SCpnt, "Unknown command %llx\n", (unsigned long long) rq->cmd_flags);
 		goto out;
 	}
 
@@ -1433,11 +1434,12 @@ static int sd_sync_cache(struct scsi_disk *sdkp)
 {
 	int retries, res;
 	struct scsi_device *sdp = sdkp->device;
+	const int timeout = sdp->request_queue->rq_timeout
+		* SD_FLUSH_TIMEOUT_MULTIPLIER;
 	struct scsi_sense_hdr sshdr;
 
 	if (!scsi_device_online(sdp))
 		return -ENODEV;
-
 
 	for (retries = 3; retries > 0; --retries) {
 		unsigned char cmd[10] = { 0 };
@@ -1448,20 +1450,39 @@ static int sd_sync_cache(struct scsi_disk *sdkp)
 		 * flush everything.
 		 */
 		res = scsi_execute_req_flags(sdp, cmd, DMA_NONE, NULL, 0,
-					     &sshdr, SD_FLUSH_TIMEOUT,
-					     SD_MAX_RETRIES, NULL, REQ_PM);
+					     &sshdr, timeout, SD_MAX_RETRIES,
+					     NULL, REQ_PM);
 		if (res == 0)
 			break;
 	}
 
 	if (res) {
 		sd_print_result(sdkp, res);
+
 		if (driver_byte(res) & DRIVER_SENSE)
 			sd_print_sense_hdr(sdkp, &sshdr);
-	}
+		/* we need to evaluate the error return  */
+		if (scsi_sense_valid(&sshdr) &&
+			/* 0x3a is medium not present */
+			sshdr.asc == 0x3a)
+				/* this is no error here */
+				return 0;
 
-	if (res)
-		return -EIO;
+		switch (host_byte(res)) {
+		/* ignore errors due to racing a disconnection */
+		case DID_BAD_TARGET:
+		case DID_NO_CONNECT:
+			return 0;
+		/* signal the upper layer it might try again */
+		case DID_BUS_BUSY:
+		case DID_IMM_RETRY:
+		case DID_REQUEUE:
+		case DID_SOFT_ERROR:
+			return -EBUSY;
+		default:
+			return -EIO;
+		}
+	}
 	return 0;
 }
 
@@ -1826,8 +1847,7 @@ sd_spinup_disk(struct scsi_disk *sdkp)
 		 * Yes, this sense key/ASC combination shouldn't
 		 * occur here.  It's characteristic of these devices.
 		 */
-		} else if (sense_valid &&
-				sshdr.sense_key == UNIT_ATTENTION &&
+		} else if (sshdr.sense_key == UNIT_ATTENTION &&
 				sshdr.asc == 0x28) {
 			if (!spintime) {
 				spintime_expire = jiffies + 5 * HZ;
@@ -2876,6 +2896,20 @@ static void sd_probe_async(void *data, async_cookie_t cookie)
 	put_device(&sdkp->dev);
 }
 
+static int sd_get_index(int *index)
+{
+	int error = -ENOMEM;
+	do {
+		if (!ida_pre_get(&sd_index_ida, GFP_KERNEL))
+			break;
+
+		spin_lock(&sd_index_lock);
+		error = ida_get_new(&sd_index_ida, index);
+		spin_unlock(&sd_index_lock);
+	} while (error == -EAGAIN);
+
+	return error;
+}
 /**
  *	sd_probe - called during driver initialization and whenever a
  *	new scsi device is attached to the system. It is called once
@@ -2918,15 +2952,7 @@ static int sd_probe(struct device *dev)
 	if (!gd)
 		goto out_free;
 
-	do {
-		if (!ida_pre_get(&sd_index_ida, GFP_KERNEL))
-			goto out_put;
-
-		spin_lock(&sd_index_lock);
-		error = ida_get_new(&sd_index_ida, &index);
-		spin_unlock(&sd_index_lock);
-	} while (error == -EAGAIN);
-
+	error = sd_get_index(&index);
 	if (error) {
 		sdev_printk(KERN_WARNING, sdp, "sd_probe: memory exhausted.\n");
 		goto out_put;
@@ -3067,9 +3093,17 @@ static int sd_start_stop_device(struct scsi_disk *sdkp, int start)
 		sd_print_result(sdkp, res);
 		if (driver_byte(res) & DRIVER_SENSE)
 			sd_print_sense_hdr(sdkp, &sshdr);
+		if (scsi_sense_valid(&sshdr) &&
+			/* 0x3a is medium not present */
+			sshdr.asc == 0x3a)
+			res = 0;
 	}
 
-	return res;
+	/* SCSI error codes must not go to the generic layer */
+	if (res)
+		return -EIO;
+
+	return 0;
 }
 
 /*
@@ -3087,7 +3121,7 @@ static void sd_shutdown(struct device *dev)
 	if (pm_runtime_suspended(dev))
 		goto exit;
 
-	if (sdkp->WCE) {
+	if (sdkp->WCE && sdkp->media_present) {
 		sd_printk(KERN_NOTICE, sdkp, "Synchronizing SCSI cache\n");
 		sd_sync_cache(sdkp);
 	}
@@ -3101,7 +3135,7 @@ exit:
 	scsi_disk_put(sdkp);
 }
 
-static int sd_suspend(struct device *dev)
+static int sd_suspend_common(struct device *dev, bool ignore_stop_errors)
 {
 	struct scsi_disk *sdkp = scsi_disk_get_from_dev(dev);
 	int ret = 0;
@@ -3109,21 +3143,38 @@ static int sd_suspend(struct device *dev)
 	if (!sdkp)
 		return 0;	/* this can happen */
 
-	if (sdkp->WCE) {
+	if (sdkp->WCE && sdkp->media_present) {
 		sd_printk(KERN_NOTICE, sdkp, "Synchronizing SCSI cache\n");
 		ret = sd_sync_cache(sdkp);
-		if (ret)
+		if (ret) {
+			/* ignore OFFLINE device */
+			if (ret == -ENODEV)
+				ret = 0;
 			goto done;
+		}
 	}
 
 	if (sdkp->device->manage_start_stop) {
 		sd_printk(KERN_NOTICE, sdkp, "Stopping disk\n");
+		/* an error is not worth aborting a system sleep */
 		ret = sd_start_stop_device(sdkp, 0);
+		if (ignore_stop_errors)
+			ret = 0;
 	}
 
 done:
 	scsi_disk_put(sdkp);
 	return ret;
+}
+
+static int sd_suspend_system(struct device *dev)
+{
+	return sd_suspend_common(dev, true);
+}
+
+static int sd_suspend_runtime(struct device *dev)
+{
+	return sd_suspend_common(dev, false);
 }
 
 static int sd_resume(struct device *dev)
@@ -3142,6 +3193,42 @@ done:
 	return ret;
 }
 
+/*
+* Each major represents 16 disks. A minor is used for the disk itself and 15
+* partitions. Mark each disk busy so that sd_probe can not reclaim this major.
+*/
+static int __init init_sd_ida(int *error)
+{
+	int *index, i, j, err;
+
+	index = kmalloc(SD_MAJORS * (256 / SD_MINORS) * sizeof(int), GFP_KERNEL);
+	if (!index)
+		return -ENOMEM;
+
+	/* Mark minors for all majors as busy */
+	for (i = 0; i < SD_MAJORS; i++)
+	{
+		for (j = 0; j < (256 / SD_MINORS); j++) {
+			err = sd_get_index(&index[i * (256 / SD_MINORS) + j]);
+			if (err) {
+				kfree(index);
+				return err;
+			}
+		}
+	}
+
+	/* Mark minors for claimed majors as free */
+	for (i = 0; i < SD_MAJORS; i++)
+	{
+		if (error[i])
+			continue;
+		for (j = 0; j < (256 / SD_MINORS); j++)
+			ida_remove(&sd_index_ida, index[i * (256 / SD_MINORS) + j]);
+	}
+	kfree(index);
+	return 0;
+}
+
 /**
  *	init_sd - entry point for this driver (both when built in or when
  *	a module).
@@ -3151,19 +3238,26 @@ done:
 static int __init init_sd(void)
 {
 	int majors = 0, i, err;
+	int error[SD_MAJORS];
 
 	SCSI_LOG_HLQUEUE(3, printk("init_sd: sd driver entry point\n"));
 
 	for (i = 0; i < SD_MAJORS; i++) {
-		if (register_blkdev(sd_major(i), "sd") != 0)
-			continue;
-		majors++;
+		error[i] = register_blkdev(sd_major(i), "sd");
+		if (error[i] == 0)
+			majors++;
 		blk_register_region(sd_major(i), SD_MINORS, NULL,
 				    sd_default_probe, NULL, NULL);
 	}
 
 	if (!majors)
 		return -ENODEV;
+
+	if (majors < SD_MAJORS) {
+		err = init_sd_ida(error);
+		if (err)
+			return err;
+	}
 
 	err = class_register(&sd_disk_class);
 	if (err)

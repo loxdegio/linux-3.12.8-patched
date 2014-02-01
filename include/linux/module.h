@@ -301,6 +301,9 @@ struct module
 	/* Size of RO sections of the module (text+rodata) */
 	unsigned int init_ro_size, core_ro_size;
 
+	/* The handle returned from unwind_add_table. */
+	void *unwind_info;
+
 	/* Arch-specific module values */
 	struct mod_arch_specific arch;
 
@@ -367,9 +370,6 @@ struct module
 	/* What modules do I depend on? */
 	struct list_head target_list;
 
-	/* Who is waiting for us to be unloaded */
-	struct task_struct *waiter;
-
 	/* Destruction function. */
 	void (*exit)(void);
 
@@ -401,6 +401,9 @@ struct module *__module_address(unsigned long addr);
 bool is_module_address(unsigned long addr);
 bool is_module_percpu_address(unsigned long addr);
 bool is_module_text_address(unsigned long addr);
+#ifdef CONFIG_SUSE_KERNEL_SUPPORTED
+const char *supported_printable(int taint);
+#endif
 
 static inline int within_module_core(unsigned long addr, const struct module *mod)
 {

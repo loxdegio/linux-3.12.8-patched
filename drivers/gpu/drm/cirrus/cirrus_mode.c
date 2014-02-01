@@ -273,8 +273,8 @@ static int cirrus_crtc_mode_set(struct drm_crtc *crtc,
 		sr07 |= 0x11;
 		break;
 	case 16:
-		sr07 |= 0xc1;
-		hdr = 0xc0;
+		sr07 |= 0x17;
+		hdr = 0xc1;
 		break;
 	case 24:
 		sr07 |= 0x15;
@@ -494,13 +494,12 @@ static struct drm_encoder *cirrus_encoder_init(struct drm_device *dev)
 
 int cirrus_vga_get_modes(struct drm_connector *connector)
 {
-	/* Just add a static list of modes */
-	drm_add_modes_noedid(connector, 640, 480);
-	drm_add_modes_noedid(connector, 800, 600);
-	drm_add_modes_noedid(connector, 1024, 768);
-	drm_add_modes_noedid(connector, 1280, 1024);
+	int count;
 
-	return 4;
+	/* Just add a static list of modes */
+	count = drm_add_modes_noedid(connector, 1280, 1024);
+	drm_set_preferred_mode(connector, 1024, 768);
+	return count;
 }
 
 static int cirrus_vga_mode_valid(struct drm_connector *connector,
@@ -588,7 +587,7 @@ int cirrus_modeset_init(struct cirrus_device *cdev)
 	cdev->dev->mode_config.max_height = CIRRUS_MAX_FB_HEIGHT;
 
 	cdev->dev->mode_config.fb_base = cdev->mc.vram_base;
-	cdev->dev->mode_config.preferred_depth = 24;
+	cdev->dev->mode_config.preferred_depth = 16;
 	/* don't prefer a shadow on virt GPU */
 	cdev->dev->mode_config.prefer_shadow = 0;
 

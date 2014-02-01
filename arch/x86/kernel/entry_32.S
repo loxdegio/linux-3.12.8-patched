@@ -299,6 +299,41 @@ ENTRY(ret_from_fork)
 	CFI_ENDPROC
 END(ret_from_fork)
 
+#ifdef CONFIG_STACK_UNWIND
+ENTRY(arch_unwind_init_running)
+	CFI_STARTPROC
+	movl	4(%esp), %edx
+	movl	(%esp), %ecx
+	leal	4(%esp), %eax
+	movl	%ebx, PT_EBX(%edx)
+	xorl	%ebx, %ebx
+	movl	%ebx, PT_ECX(%edx)
+	movl	%ebx, PT_EDX(%edx)
+	movl	%esi, PT_ESI(%edx)
+	movl	%edi, PT_EDI(%edx)
+	movl	%ebp, PT_EBP(%edx)
+	movl	%ebx, PT_EAX(%edx)
+	movl	$__USER_DS, PT_DS(%edx)
+	movl	$__USER_DS, PT_ES(%edx)
+	movl	$__KERNEL_PERCPU, PT_FS(%edx)
+	movl	$__KERNEL_STACK_CANARY, PT_GS(%edx)
+	movl	%eax, PT_OLDESP(%edx)
+	movl	16(%esp), %eax
+	movl	%ebx, PT_ORIG_EAX(%edx)
+	movl	%ecx, PT_EIP(%edx)
+	movl	12(%esp), %ecx
+	movl	$__KERNEL_CS, PT_CS(%edx)
+	movl	%eax, 12(%esp)
+	movl	8(%esp), %eax
+	movl	%ecx, 8(%esp)
+	movl	%ebx, PT_EFLAGS(%edx)
+	movl	PT_EBX(%edx), %ebx
+	movl	$__KERNEL_DS, PT_OLDSS(%edx)
+	jmpl	*%eax
+	CFI_ENDPROC
+ENDPROC(arch_unwind_init_running)
+#endif
+
 ENTRY(ret_from_kernel_thread)
 	CFI_STARTPROC
 	pushl_cfi %eax
@@ -362,12 +397,9 @@ END(ret_from_exception)
 #ifdef CONFIG_PREEMPT
 ENTRY(resume_kernel)
 	DISABLE_INTERRUPTS(CLBR_ANY)
-	cmpl $0,TI_preempt_count(%ebp)	# non-zero preempt_count ?
-	jnz restore_all
 need_resched:
-	movl TI_flags(%ebp), %ecx	# need_resched set ?
-	testb $_TIF_NEED_RESCHED, %cl
-	jz restore_all
+	cmpl $0,PER_CPU_VAR(__preempt_count)
+	jnz restore_all
 	testl $X86_EFLAGS_IF,PT_EFLAGS(%esp)	# interrupts off (exception path) ?
 	jz restore_all
 	call preempt_schedule_irq
@@ -389,7 +421,7 @@ ENTRY(ia32_sysenter_target)
 	CFI_SIGNAL_FRAME
 	CFI_DEF_CFA esp, 0
 	CFI_REGISTER esp, ebp
-	movl TSS_sysenter_sp0(%esp),%esp
+	movl SYSENTER_stack_sp0(%esp),%esp
 sysenter_past_esp:
 	/*
 	 * Interrupts are disabled here, but we can't trace it until
@@ -969,7 +1001,7 @@ END(spurious_interrupt_bug)
  */
 	.popsection
 
-#ifdef CONFIG_XEN
+#ifdef CONFIG_PARAVIRT_XEN
 /* Xen doesn't set %esp to be precisely what the normal sysenter
    entrypoint expects, so fix it up before using the normal path. */
 ENTRY(xen_sysenter_target)
@@ -1059,7 +1091,7 @@ ENDPROC(xen_failsafe_callback)
 BUILD_INTERRUPT3(xen_hvm_callback_vector, HYPERVISOR_CALLBACK_VECTOR,
 		xen_evtchn_do_upcall)
 
-#endif	/* CONFIG_XEN */
+#endif	/* CONFIG_PARAVIRT_XEN */
 
 #if IS_ENABLED(CONFIG_HYPERV)
 
@@ -1085,7 +1117,7 @@ ENTRY(ftrace_caller)
 	pushl $0	/* Pass NULL as regs pointer */
 	movl 4*4(%esp), %eax
 	movl 0x4(%ebp), %edx
-	leal function_trace_op, %ecx
+	movl function_trace_op, %ecx
 	subl $MCOUNT_INSN_SIZE, %eax
 
 .globl ftrace_call
@@ -1143,7 +1175,7 @@ ENTRY(ftrace_regs_caller)
 	movl 12*4(%esp), %eax	/* Load ip (1st parameter) */
 	subl $MCOUNT_INSN_SIZE, %eax	/* Adjust ip */
 	movl 0x4(%ebp), %edx	/* Load parent ip (2nd parameter) */
-	leal function_trace_op, %ecx /* Save ftrace_pos in 3rd parameter */
+	movl function_trace_op, %ecx /* Save ftrace_pos in 3rd parameter */
 	pushl %esp		/* Save pt_regs as 4th parameter */
 
 GLOBAL(ftrace_regs_call)
@@ -1247,6 +1279,16 @@ return_to_handler:
  */
 	.pushsection .kprobes.text, "ax"
 
+#ifdef CONFIG_TRACING
+ENTRY(trace_page_fault)
+	RING0_EC_FRAME
+	ASM_CLAC
+	pushl_cfi $trace_do_page_fault
+	jmp error_code
+	CFI_ENDPROC
+END(trace_page_fault)
+#endif
+
 ENTRY(page_fault)
 	RING0_EC_FRAME
 	ASM_CLAC
@@ -1299,7 +1341,7 @@ END(page_fault)
  * that sets up the real kernel stack. Check here, since we can't
  * allow the wrong stack to be used.
  *
- * "TSS_sysenter_sp0+12" is because the NMI/debug handler will have
+ * "SYSENTER_stack_sp0+12" is because the NMI/debug handler will have
  * already pushed 3 words if it hits on the sysenter instruction:
  * eflags, cs and eip.
  *
@@ -1311,7 +1353,7 @@ END(page_fault)
 	cmpw $__KERNEL_CS, 4(%esp)
 	jne \ok
 \label:
-	movl TSS_sysenter_sp0 + \offset(%esp), %esp
+	movl SYSENTER_stack_sp0 + \offset(%esp), %esp
 	CFI_DEF_CFA esp, 0
 	CFI_UNDEFINED eip
 	pushfl_cfi

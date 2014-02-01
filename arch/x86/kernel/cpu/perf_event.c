@@ -1904,6 +1904,17 @@ void arch_perf_update_userpage(struct perf_event_mmap_page *userpg, u64 now)
  * callchain support
  */
 
+static void
+backtrace_warning_symbol(void *data, char *msg, unsigned long symbol)
+{
+	/* Ignore warnings */
+}
+
+static void backtrace_warning(void *data, char *msg)
+{
+	/* Ignore warnings */
+}
+
 static int backtrace_stack(void *data, char *name)
 {
 	return 0;
@@ -1917,6 +1928,8 @@ static void backtrace_address(void *data, unsigned long addr, int reliable)
 }
 
 static const struct stacktrace_ops backtrace_ops = {
+	.warning		= backtrace_warning,
+	.warning_symbol		= backtrace_warning_symbol,
 	.stack			= backtrace_stack,
 	.address		= backtrace_address,
 	.walk_stack		= print_context_stack_bp,
@@ -1989,7 +2002,7 @@ perf_callchain_user32(struct pt_regs *regs, struct perf_callchain_entry *entry)
 		frame.return_address = 0;
 
 		bytes = copy_from_user_nmi(&frame, fp, sizeof(frame));
-		if (bytes != sizeof(frame))
+		if (bytes != 0)
 			break;
 
 		if (!valid_user_frame(fp, sizeof(frame)))
@@ -2041,7 +2054,7 @@ perf_callchain_user(struct perf_callchain_entry *entry, struct pt_regs *regs)
 		frame.return_address = 0;
 
 		bytes = copy_from_user_nmi(&frame, fp, sizeof(frame));
-		if (bytes != sizeof(frame))
+		if (bytes != 0)
 			break;
 
 		if (!valid_user_frame(fp, sizeof(frame)))

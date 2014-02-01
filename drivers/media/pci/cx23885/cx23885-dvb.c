@@ -51,6 +51,7 @@
 #include "stv6110.h"
 #include "lnbh24.h"
 #include "cx24116.h"
+#include "cx24117.h"
 #include "m88ds3103.h"
 #include "m88dc2800.h"
 #include "cimax2.h"
@@ -460,6 +461,10 @@ static struct stv6110_config netup_stv6110_tunerconfig_b = {
 };
 
 static struct cx24116_config tbs_cx24116_config = {
+	.demod_address = 0x55,
+};
+
+static struct cx24117_config tbs_cx24117_config = {
 	.demod_address = 0x55,
 };
 
@@ -1133,6 +1138,25 @@ static int dvb_register(struct cx23885_tsport *port)
 			fe0->dvb.frontend->ops.set_voltage = f300_set_voltage;
 
 		break;
+	case CX23885_BOARD_TBS_6980:
+	case CX23885_BOARD_TBS_6981:
+		i2c_bus = &dev->i2c_bus[1];
+
+		switch (port->nr) {
+		/* PORT B */
+		case 1:
+			fe0->dvb.frontend = dvb_attach(cx24117_attach,
+					&tbs_cx24117_config,
+					&i2c_bus->i2c_adap);
+			break;
+		/* PORT C */
+		case 2:
+			fe0->dvb.frontend = dvb_attach(cx24117_attach,
+					&tbs_cx24117_config,
+					&i2c_bus->i2c_adap);
+			break;
+		}
+		break;
 	case CX23885_BOARD_TEVII_S470:
 		i2c_bus = &dev->i2c_bus[1];
 
@@ -1412,11 +1436,6 @@ static int dvb_register(struct cx23885_tsport *port)
 		fe0->dvb.frontend = dvb_attach(m88dc2800_attach,
 					&dvbsky_dc2800_config,
 					&i2c_bus->i2c_adap);
-		if (fe0->dvb.frontend != NULL) {
-			dvb_attach(ts2020_attach, fe0->dvb.frontend,
-				&tevii_ts2020_config, &i2c_bus->i2c_adap);
-			fe0->dvb.frontend->ops.set_voltage = f300_set_voltage;
-		}
 		break;
 	case CX23885_BOARD_DVBSKY_T9580:
 		switch (port->nr) {

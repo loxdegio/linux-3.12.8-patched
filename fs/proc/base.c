@@ -339,7 +339,7 @@ static int proc_pid_stack(struct seq_file *m, struct pid_namespace *ns,
 static int proc_pid_schedstat(struct task_struct *task, char *buffer)
 {
 	return sprintf(buffer, "%llu %llu %lu\n",
-			(unsigned long long)tsk_seruntime(task),
+			(unsigned long long)task->se.sum_exec_runtime,
 			(unsigned long long)task->sched_info.run_delay,
 			task->sched_info.pcount);
 }
@@ -1151,10 +1151,16 @@ static ssize_t proc_loginuid_write(struct file * file, const char __user * buf,
 		goto out_free_page;
 
 	}
-	kloginuid = make_kuid(file->f_cred->user_ns, loginuid);
-	if (!uid_valid(kloginuid)) {
-		length = -EINVAL;
-		goto out_free_page;
+
+	/* is userspace tring to explicitly UNSET the loginuid? */
+	if (loginuid == AUDIT_UID_UNSET) {
+		kloginuid = INVALID_UID;
+	} else {
+		kloginuid = make_kuid(file->f_cred->user_ns, loginuid);
+		if (!uid_valid(kloginuid)) {
+			length = -EINVAL;
+			goto out_free_page;
+		}
 	}
 
 	length = audit_set_loginuid(kloginuid);

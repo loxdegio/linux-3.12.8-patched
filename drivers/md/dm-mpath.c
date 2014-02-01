@@ -58,6 +58,8 @@ struct priority_group {
 	struct list_head pgpaths;
 };
 
+#define FEATURE_NO_PARTITIONS 1
+
 /* Multipath context */
 struct multipath {
 	struct list_head list;
@@ -92,6 +94,7 @@ struct multipath {
 	unsigned pg_init_retries;	/* Number of times to retry pg_init */
 	unsigned pg_init_count;		/* Number of times pg_init called */
 	unsigned pg_init_delay_msecs;	/* Number of msecs before pg_init retry */
+	unsigned features;		/* Additional selected features */
 
 	unsigned queue_size;
 	struct work_struct process_queued_ios;
@@ -162,12 +165,9 @@ static struct priority_group *alloc_priority_group(void)
 static void free_pgpaths(struct list_head *pgpaths, struct dm_target *ti)
 {
 	struct pgpath *pgpath, *tmp;
-	struct multipath *m = ti->private;
 
 	list_for_each_entry_safe(pgpath, tmp, pgpaths, list) {
 		list_del(&pgpath->list);
-		if (m->hw_handler_name)
-			scsi_dh_detach(bdev_get_queue(pgpath->path.dev->bdev));
 		dm_put_device(ti, pgpath->path.dev);
 		free_pgpath(pgpath);
 	}
@@ -391,13 +391,16 @@ static int map_io(struct multipath *m, struct request *clone,
 	if (was_queued)
 		m->queue_size--;
 
-	if ((pgpath && m->queue_io) ||
-	    (!pgpath && m->queue_if_no_path)) {
+	if (m->pg_init_required) {
+		if (!m->pg_init_in_progress)
+			queue_work(kmultipathd, &m->process_queued_ios);
+		r = DM_MAPIO_REQUEUE;
+	} else if ((pgpath && m->queue_io) ||
+		   (!pgpath && m->queue_if_no_path)) {
 		/* Queue for the daemon to resubmit */
 		list_add_tail(&clone->queuelist, &m->queued_ios);
 		m->queue_size++;
-		if ((m->pg_init_required && !m->pg_init_in_progress) ||
-		    !m->queue_io)
+		if (!m->queue_io)
 			queue_work(kmultipathd, &m->process_queued_ios);
 		pgpath = NULL;
 		r = DM_MAPIO_SUBMITTED;
@@ -815,6 +818,10 @@ static int parse_features(struct dm_arg_set *as, struct multipath *m)
 			continue;
 		}
 
+		if (!strcasecmp(arg_name, "no_partitions")) {
+			m->features |= FEATURE_NO_PARTITIONS;
+			continue;
+		}
 		if (!strcasecmp(arg_name, "pg_init_retries") &&
 		    (argc >= 1)) {
 			r = dm_read_arg(_args + 1, as, &m->pg_init_retries, &ti->error);
@@ -1203,8 +1210,9 @@ static void pg_init_done(void *data, int errors)
 			errors = 0;
 			break;
 		}
-		DMERR("Could not failover the device: Handler scsi_dh_%s "
-		      "Error %d.", m->hw_handler_name, errors);
+		DMERR("Count not failover device %s: Handler scsi_dh_%s "
+		      "was not loaded.", pgpath->path.dev->name,
+		      m->hw_handler_name);
 		/*
 		 * Fail path for now, so we do not ping pong
 		 */
@@ -1216,6 +1224,10 @@ static void pg_init_done(void *data, int errors)
 		 * controller so try the other pg.
 		 */
 		bypass_pg(m, pg, 1);
+		break;
+	case SCSI_DH_DEV_OFFLINED:
+		DMWARN("Device %s offlined.", pgpath->path.dev->name);
+		errors = 0;
 		break;
 	case SCSI_DH_RETRY:
 		/* Wait before retrying. */
@@ -1238,7 +1250,8 @@ static void pg_init_done(void *data, int errors)
 	spin_lock_irqsave(&m->lock, flags);
 	if (errors) {
 		if (pgpath == m->current_pgpath) {
-			DMERR("Could not failover device. Error %d.", errors);
+			DMERR("Could not failover device %s, error %d.",
+			      pgpath->path.dev->name, errors);
 			m->current_pgpath = NULL;
 			m->current_pg = NULL;
 		}
@@ -1435,11 +1448,14 @@ static void multipath_status(struct dm_target *ti, status_type_t type,
 		DMEMIT("%u ", m->queue_if_no_path +
 			      (m->pg_init_retries > 0) * 2 +
 			      (m->pg_init_delay_msecs != DM_PG_INIT_DELAY_DEFAULT) * 2 +
-			      m->retain_attached_hw_handler);
+			      m->retain_attached_hw_handler +
+			      (m->features & FEATURE_NO_PARTITIONS));
 		if (m->queue_if_no_path)
 			DMEMIT("queue_if_no_path ");
 		if (m->pg_init_retries)
 			DMEMIT("pg_init_retries %u ", m->pg_init_retries);
+		if (m->features & FEATURE_NO_PARTITIONS)
+			DMEMIT("no_partitions ");
 		if (m->pg_init_delay_msecs != DM_PG_INIT_DELAY_DEFAULT)
 			DMEMIT("pg_init_delay_msecs %u ", m->pg_init_delay_msecs);
 		if (m->retain_attached_hw_handler)
@@ -1677,6 +1693,11 @@ static int multipath_busy(struct dm_target *ti)
 
 	spin_lock_irqsave(&m->lock, flags);
 
+	/* pg_init in progress, requeue until done */
+	if (m->pg_init_in_progress) {
+		busy = 1;
+		goto out;
+	}
 	/* Guess which priority_group will be used at next mapping time */
 	if (unlikely(!m->current_pgpath && m->next_pg))
 		pg = m->next_pg;

@@ -109,7 +109,6 @@ struct apparmor_audit_data {
 	void *profile;
 	const char *name;
 	const char *info;
-	struct task_struct *tsk;
 	union {
 		void *target;
 		struct {
@@ -126,6 +125,10 @@ struct apparmor_audit_data {
 			u32 denied;
 			kuid_t ouid;
 		} fs;
+		struct {
+			int type, protocol;
+			struct sock *sk;
+		} net;
 	};
 };
 

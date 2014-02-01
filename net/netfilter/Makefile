@@ -43,6 +43,7 @@ obj-$(CONFIG_NF_CONNTRACK_PPTP) += nf_conntrack_pptp.o
 obj-$(CONFIG_NF_CONNTRACK_SANE) += nf_conntrack_sane.o
 obj-$(CONFIG_NF_CONNTRACK_SIP) += nf_conntrack_sip.o
 obj-$(CONFIG_NF_CONNTRACK_TFTP) += nf_conntrack_tftp.o
+obj-$(CONFIG_NF_CONNTRACK_SLP) += nf_conntrack_slp.o
 
 nf_nat-y	:= nf_nat_core.o nf_nat_proto_unknown.o nf_nat_proto_common.o \
 		   nf_nat_proto_udp.o nf_nat_proto_tcp.o nf_nat_helper.o
@@ -63,6 +64,24 @@ obj-$(CONFIG_NF_NAT_TFTP) += nf_nat_tftp.o
 
 # SYNPROXY
 obj-$(CONFIG_NETFILTER_SYNPROXY) += nf_synproxy_core.o
+
+# nf_tables
+nf_tables-objs += nf_tables_core.o nf_tables_api.o
+nf_tables-objs += nft_immediate.o nft_cmp.o nft_lookup.o
+nf_tables-objs += nft_bitwise.o nft_byteorder.o nft_payload.o
+
+obj-$(CONFIG_NF_TABLES)		+= nf_tables.o
+obj-$(CONFIG_NFT_COMPAT)	+= nft_compat.o
+obj-$(CONFIG_NFT_EXTHDR)	+= nft_exthdr.o
+obj-$(CONFIG_NFT_META)		+= nft_meta.o
+obj-$(CONFIG_NFT_CT)		+= nft_ct.o
+obj-$(CONFIG_NFT_LIMIT)		+= nft_limit.o
+obj-$(CONFIG_NFT_NAT)		+= nft_nat.o
+#nf_tables-objs			+= nft_meta_target.o
+obj-$(CONFIG_NFT_RBTREE)	+= nft_rbtree.o
+obj-$(CONFIG_NFT_HASH)		+= nft_hash.o
+obj-$(CONFIG_NFT_COUNTER)	+= nft_counter.o
+obj-$(CONFIG_NFT_LOG)		+= nft_log.o
 
 # generic X tables 
 obj-$(CONFIG_NETFILTER_XTABLES) += x_tables.o xt_tcpudp.o

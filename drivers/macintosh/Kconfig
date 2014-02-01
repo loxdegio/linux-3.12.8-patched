@@ -13,7 +13,7 @@ if MACINTOSH_DRIVERS
 
 config ADB
 	bool "Apple Desktop Bus (ADB) support"
-	depends on MAC || (PPC_PMAC && PPC32)
+	depends on MAC || PPC_PMAC
 	help
 	  Apple Desktop Bus (ADB) support is for support of devices which
 	  are connected to an ADB port.  ADB devices tend to have 4 pins.
@@ -103,6 +103,7 @@ config ADB_PMU_LED_IDE
 	bool "Use front LED as IDE LED by default"
 	depends on ADB_PMU_LED
 	depends on LEDS_CLASS
+	depends on IDE_GD_ATA
 	select LEDS_TRIGGERS
 	select LEDS_TRIGGER_IDE_DISK
 	help

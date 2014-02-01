@@ -47,6 +47,12 @@ extern struct kmem_cache *btrfs_path_cachep;
 extern struct kmem_cache *btrfs_free_space_cachep;
 struct btrfs_ordered_sum;
 
+#ifdef CONFIG_BTRFS_FS_RUN_SANITY_TESTS
+#define STATIC noinline
+#else
+#define STATIC static noinline
+#endif
+
 #define BTRFS_MAGIC 0x4D5F53665248425FULL /* ascii _BHRfS_M, no null */
 
 #define BTRFS_MAX_MIRRORS 3
@@ -517,7 +523,12 @@ struct btrfs_super_block {
 #define BTRFS_FEATURE_INCOMPAT_SKINNY_METADATA	(1ULL << 8)
 
 #define BTRFS_FEATURE_COMPAT_SUPP		0ULL
+#define BTRFS_FEATURE_COMPAT_SAFE_SET		0ULL
+#define BTRFS_FEATURE_COMPAT_SAFE_CLEAR		0ULL
 #define BTRFS_FEATURE_COMPAT_RO_SUPP		0ULL
+#define BTRFS_FEATURE_COMPAT_RO_SAFE_SET	0ULL
+#define BTRFS_FEATURE_COMPAT_RO_SAFE_CLEAR	0ULL
+
 #define BTRFS_FEATURE_INCOMPAT_SUPP			\
 	(BTRFS_FEATURE_INCOMPAT_MIXED_BACKREF |		\
 	 BTRFS_FEATURE_INCOMPAT_DEFAULT_SUBVOL |	\
@@ -527,6 +538,10 @@ struct btrfs_super_block {
 	 BTRFS_FEATURE_INCOMPAT_RAID56 |		\
 	 BTRFS_FEATURE_INCOMPAT_EXTENDED_IREF |		\
 	 BTRFS_FEATURE_INCOMPAT_SKINNY_METADATA)
+
+#define BTRFS_FEATURE_INCOMPAT_SAFE_SET			\
+	(BTRFS_FEATURE_INCOMPAT_EXTENDED_IREF)
+#define BTRFS_FEATURE_INCOMPAT_SAFE_CLEAR		0ULL
 
 /*
  * A leaf is full of items. offset and size tell us where to find
@@ -1134,6 +1149,9 @@ struct btrfs_space_info {
 	spinlock_t lock;
 	struct rw_semaphore groups_sem;
 	wait_queue_head_t wait;
+
+	struct kobject kobj;
+	struct kobject block_group_kobjs[BTRFS_NR_RAID_TYPES];
 };
 
 #define	BTRFS_BLOCK_RSV_GLOBAL		1
@@ -1509,6 +1527,8 @@ struct btrfs_fs_info {
 	int thread_pool_size;
 
 	struct kobject super_kobj;
+	struct kobject *space_info_kobj;
+	struct kobject *device_dir_kobj;
 	struct completion kobj_unregister;
 	int do_barriers;
 	int closing;
@@ -1580,7 +1600,6 @@ struct btrfs_fs_info {
 	atomic_t scrubs_paused;
 	atomic_t scrub_cancel_req;
 	wait_queue_head_t scrub_pause_wait;
-	struct rw_semaphore scrub_super_lock;
 	int scrub_workers_refcnt;
 	struct btrfs_workers scrub_workers;
 	struct btrfs_workers scrub_wr_completion_workers;
@@ -1724,7 +1743,9 @@ struct btrfs_root {
 	int ref_cows;
 	int track_dirty;
 	int in_radix;
-
+#ifdef CONFIG_BTRFS_FS_RUN_SANITY_TESTS
+	int dummy_root;
+#endif
 	u64 defrag_trans_start;
 	struct btrfs_key defrag_progress;
 	struct btrfs_key defrag_max;
@@ -2461,8 +2482,7 @@ static inline unsigned long btrfs_item_nr_offset(int nr)
 		sizeof(struct btrfs_item) * nr;
 }
 
-static inline struct btrfs_item *btrfs_item_nr(struct extent_buffer *eb,
-					       int nr)
+static inline struct btrfs_item *btrfs_item_nr(int nr)
 {
 	return (struct btrfs_item *)btrfs_item_nr_offset(nr);
 }
@@ -2475,30 +2495,30 @@ static inline u32 btrfs_item_end(struct extent_buffer *eb,
 
 static inline u32 btrfs_item_end_nr(struct extent_buffer *eb, int nr)
 {
-	return btrfs_item_end(eb, btrfs_item_nr(eb, nr));
+	return btrfs_item_end(eb, btrfs_item_nr(nr));
 }
 
 static inline u32 btrfs_item_offset_nr(struct extent_buffer *eb, int nr)
 {
-	return btrfs_item_offset(eb, btrfs_item_nr(eb, nr));
+	return btrfs_item_offset(eb, btrfs_item_nr(nr));
 }
 
 static inline u32 btrfs_item_size_nr(struct extent_buffer *eb, int nr)
 {
-	return btrfs_item_size(eb, btrfs_item_nr(eb, nr));
+	return btrfs_item_size(eb, btrfs_item_nr(nr));
 }
 
 static inline void btrfs_item_key(struct extent_buffer *eb,
 			   struct btrfs_disk_key *disk_key, int nr)
 {
-	struct btrfs_item *item = btrfs_item_nr(eb, nr);
+	struct btrfs_item *item = btrfs_item_nr(nr);
 	read_eb_member(eb, item, struct btrfs_item, key, disk_key);
 }
 
 static inline void btrfs_set_item_key(struct extent_buffer *eb,
 			       struct btrfs_disk_key *disk_key, int nr)
 {
-	struct btrfs_item *item = btrfs_item_nr(eb, nr);
+	struct btrfs_item *item = btrfs_item_nr(nr);
 	write_eb_member(eb, item, struct btrfs_item, key, disk_key);
 }
 
@@ -2666,7 +2686,7 @@ static inline void btrfs_set_header_backref_rev(struct extent_buffer *eb,
 	btrfs_set_header_flags(eb, flags);
 }
 
-static inline unsigned long btrfs_header_fsid(struct extent_buffer *eb)
+static inline unsigned long btrfs_header_fsid(void)
 {
 	return offsetof(struct btrfs_header, fsid);
 }
@@ -3105,11 +3125,6 @@ static inline u32 btrfs_level_size(struct btrfs_root *root, int level)
 	((unsigned long)(btrfs_leaf_data(leaf) + \
 	btrfs_item_offset_nr(leaf, slot)))
 
-static inline struct dentry *fdentry(struct file *file)
-{
-	return file->f_path.dentry;
-}
-
 static inline bool btrfs_mixed_space_info(struct btrfs_space_info *space_info)
 {
 	return ((space_info->flags & BTRFS_BLOCK_GROUP_METADATA) &&
@@ -3162,6 +3177,7 @@ struct btrfs_block_group_cache *btrfs_lookup_block_group(
 						 struct btrfs_fs_info *info,
 						 u64 bytenr);
 void btrfs_put_block_group(struct btrfs_block_group_cache *cache);
+int get_block_group_index(struct btrfs_block_group_cache *cache);
 struct extent_buffer *btrfs_alloc_free_block(struct btrfs_trans_handle *trans,
 					struct btrfs_root *root, u32 blocksize,
 					u64 parent, u64 root_objectid,
@@ -3308,7 +3324,6 @@ int btrfs_find_next_key(struct btrfs_root *root, struct btrfs_path *path,
 			struct btrfs_key *key, int lowest_level,
 			u64 min_trans);
 int btrfs_search_forward(struct btrfs_root *root, struct btrfs_key *min_key,
-			 struct btrfs_key *max_key,
 			 struct btrfs_path *path,
 			 u64 min_trans);
 enum btrfs_compare_tree_result {
@@ -3613,9 +3628,6 @@ int btrfs_csum_file_blocks(struct btrfs_trans_handle *trans,
 			   struct btrfs_ordered_sum *sums);
 int btrfs_csum_one_bio(struct btrfs_root *root, struct inode *inode,
 		       struct bio *bio, u64 file_start, int contig);
-int btrfs_csum_truncate(struct btrfs_trans_handle *trans,
-			struct btrfs_root *root, struct btrfs_path *path,
-			u64 isize);
 int btrfs_lookup_csums_range(struct btrfs_root *root, u64 start, u64 end,
 			     struct list_head *list, int search_commit);
 /* inode.c */
@@ -3675,8 +3687,7 @@ int btrfs_truncate_inode_items(struct btrfs_trans_handle *trans,
 			       u32 min_type);
 
 int btrfs_start_delalloc_inodes(struct btrfs_root *root, int delay_iput);
-int btrfs_start_all_delalloc_inodes(struct btrfs_fs_info *fs_info,
-				    int delay_iput);
+int btrfs_start_delalloc_roots(struct btrfs_fs_info *fs_info, int delay_iput);
 int btrfs_set_extent_delalloc(struct inode *inode, u64 start, u64 end,
 			      struct extent_state **cached_state);
 int btrfs_create_subvol_root(struct btrfs_trans_handle *trans,
@@ -3745,9 +3756,6 @@ void btrfs_cleanup_defrag_inodes(struct btrfs_fs_info *fs_info);
 int btrfs_sync_file(struct file *file, loff_t start, loff_t end, int datasync);
 void btrfs_drop_extent_cache(struct inode *inode, u64 start, u64 end,
 			     int skip_pinned);
-int btrfs_replace_extent_cache(struct inode *inode, struct extent_map *replace,
-			       u64 start, u64 end, int skip_pinned,
-			       int modified);
 extern const struct file_operations btrfs_file_operations;
 int __btrfs_drop_extents(struct btrfs_trans_handle *trans,
 			 struct btrfs_root *root, struct inode *inode,
@@ -3771,6 +3779,8 @@ int btrfs_defrag_leaves(struct btrfs_trans_handle *trans,
 /* sysfs.c */
 int btrfs_init_sysfs(void);
 void btrfs_exit_sysfs(void);
+int btrfs_sysfs_add_one(struct btrfs_fs_info *fs_info);
+void btrfs_sysfs_remove_one(struct btrfs_fs_info *fs_info);
 
 /* xattr.c */
 ssize_t btrfs_listxattr(struct dentry *dentry, char *buffer, size_t size);
@@ -3944,9 +3954,7 @@ int btrfs_scrub_dev(struct btrfs_fs_info *fs_info, u64 devid, u64 start,
 		    u64 end, struct btrfs_scrub_progress *progress,
 		    int readonly, int is_dev_replace);
 void btrfs_scrub_pause(struct btrfs_root *root);
-void btrfs_scrub_pause_super(struct btrfs_root *root);
 void btrfs_scrub_continue(struct btrfs_root *root);
-void btrfs_scrub_continue_super(struct btrfs_root *root);
 int btrfs_scrub_cancel(struct btrfs_fs_info *info);
 int btrfs_scrub_cancel_dev(struct btrfs_fs_info *info,
 			   struct btrfs_device *dev);
@@ -4028,5 +4036,9 @@ static inline int btrfs_defrag_cancelled(struct btrfs_fs_info *fs_info)
 	return signal_pending(current);
 }
 
+/* Sanity test specific functions */
+#ifdef CONFIG_BTRFS_FS_RUN_SANITY_TESTS
+void btrfs_test_destroy_inode(struct inode *inode);
+#endif
 
 #endif

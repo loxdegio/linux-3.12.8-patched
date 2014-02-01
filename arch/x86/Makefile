@@ -145,7 +145,9 @@ KBUILD_CFLAGS += -pipe
 # Workaround for a gcc prelease that unfortunately was shipped in a suse release
 KBUILD_CFLAGS += -Wno-sign-compare
 #
+ifneq ($(CONFIG_UNWIND_INFO),y)
 KBUILD_CFLAGS += -fno-asynchronous-unwind-tables
+endif
 # prevent gcc from generating any FP code by mistake
 KBUILD_CFLAGS += $(call cc-option,-mno-sse -mno-mmx -mno-sse2 -mno-3dnow,)
 KBUILD_CFLAGS += $(call cc-option,-mno-avx,)
@@ -193,8 +195,29 @@ boot := arch/x86/boot
 
 BOOT_TARGETS = bzlilo bzdisk fdimage fdimage144 fdimage288 isoimage
 
-PHONY += bzImage $(BOOT_TARGETS)
+PHONY += bzImage vmlinuz $(BOOT_TARGETS)
 
+ifdef CONFIG_XEN
+LINUXINCLUDE := -D__XEN_INTERFACE_VERSION__=$(CONFIG_XEN_INTERFACE_VERSION) \
+	-I$(srctree)/arch/x86/include/mach-xen $(LINUXINCLUDE)
+
+ifdef CONFIG_X86_64
+LDFLAGS_vmlinux := -e startup_64
+endif
+endif
+
+ifeq ($(CONFIG_XEN)-$(CONFIG_XEN_BZIMAGE),y-)
+# Default kernel to build
+all: vmlinuz
+
+# KBUILD_IMAGE specifies the target image being built
+KBUILD_IMAGE := $(boot)/vmlinuz
+
+vmlinuz: vmlinux
+	$(Q)$(MAKE) $(build)=$(boot) $(KBUILD_IMAGE)
+	$(Q)mkdir -p $(objtree)/arch/$(UTS_MACHINE)/boot
+	$(Q)ln -fsn ../../x86/boot/$@ $(objtree)/arch/$(UTS_MACHINE)/boot/$@
+else
 # Default kernel to build
 all: bzImage
 
@@ -208,6 +231,7 @@ endif
 	$(Q)$(MAKE) $(build)=$(boot) $(KBUILD_IMAGE)
 	$(Q)mkdir -p $(objtree)/arch/$(UTS_MACHINE)/boot
 	$(Q)ln -fsn ../../x86/boot/bzImage $(objtree)/arch/$(UTS_MACHINE)/boot/$@
+endif
 
 $(BOOT_TARGETS): vmlinux
 	$(Q)$(MAKE) $(build)=$(boot) $@

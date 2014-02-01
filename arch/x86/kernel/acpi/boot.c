@@ -71,12 +71,17 @@ int acpi_disable_cmcff;
 
 u8 acpi_sci_flags __initdata;
 int acpi_sci_override_gsi __initdata;
+#ifndef CONFIG_XEN
 int acpi_skip_timer_override __initdata;
 int acpi_use_timer_override __initdata;
 int acpi_fix_pin2_polarity __initdata;
 
 #ifdef CONFIG_X86_LOCAL_APIC
 static u64 acpi_lapic_addr __initdata = APIC_DEFAULT_PHYS_BASE;
+#endif
+#else
+#define acpi_skip_timer_override 0
+#define acpi_fix_pin2_polarity 0
 #endif
 
 #ifndef __HAVE_ARCH_CMPXCHG
@@ -176,6 +181,7 @@ static int __init acpi_parse_madt(struct acpi_table_header *table)
 		return -ENODEV;
 	}
 
+#ifndef CONFIG_XEN
 	if (madt->address) {
 		acpi_lapic_addr = (u64) madt->address;
 
@@ -185,28 +191,44 @@ static int __init acpi_parse_madt(struct acpi_table_header *table)
 
 	default_acpi_madt_oem_check(madt->header.oem_id,
 				    madt->header.oem_table_id);
+#endif
 
 	return 0;
 }
 
-static void acpi_register_lapic(int id, u8 enabled)
+/**
+ * acpi_register_lapic - register a local apic and generates a logic cpu number
+ * @id: local apic id to register
+ * @enabled: this cpu is enabled or not
+ *
+ * Returns the logic cpu number which maps to the local apic
+ */
+static
+#ifndef CONFIG_XEN
+int
+#else
+void
+#endif
+acpi_register_lapic(int id, u8 enabled)
 {
+#ifndef CONFIG_XEN
 	unsigned int ver = 0;
 
 	if (id >= MAX_LOCAL_APIC) {
 		printk(KERN_INFO PREFIX "skipped apicid that is too big\n");
-		return;
+		return -EINVAL;
 	}
 
 	if (!enabled) {
 		++disabled_cpus;
-		return;
+		return -EINVAL;
 	}
 
 	if (boot_cpu_physical_apicid != -1U)
 		ver = apic_version[boot_cpu_physical_apicid];
 
-	generic_processor_info(id, ver);
+	return generic_processor_info(id, ver);
+#endif
 }
 
 static int __init
@@ -237,7 +259,7 @@ acpi_parse_x2apic(struct acpi_subtable_header *header, const unsigned long end)
 		printk(KERN_WARNING PREFIX "x2apic entry ignored\n");
 	else
 		acpi_register_lapic(apic_id, enabled);
-#else
+#elif !defined(CONFIG_XEN)
 	printk(KERN_WARNING PREFIX "x2apic entry ignored\n");
 #endif
 
@@ -291,6 +313,7 @@ static int __init
 acpi_parse_lapic_addr_ovr(struct acpi_subtable_header * header,
 			  const unsigned long end)
 {
+#ifndef CONFIG_XEN
 	struct acpi_madt_local_apic_override *lapic_addr_ovr = NULL;
 
 	lapic_addr_ovr = (struct acpi_madt_local_apic_override *)header;
@@ -299,6 +322,7 @@ acpi_parse_lapic_addr_ovr(struct acpi_subtable_header * header,
 		return -EINVAL;
 
 	acpi_lapic_addr = lapic_addr_ovr->address;
+#endif
 
 	return 0;
 }
@@ -554,7 +578,7 @@ static int acpi_register_gsi_ioapic(struct device *dev, u32 gsi,
 int (*__acpi_register_gsi)(struct device *dev, u32 gsi,
 			   int trigger, int polarity) = acpi_register_gsi_pic;
 
-#ifdef CONFIG_ACPI_SLEEP
+#if defined(CONFIG_ACPI_SLEEP) && !defined(CONFIG_ACPI_PV_SLEEP)
 int (*acpi_suspend_lowlevel)(void) = x86_acpi_suspend_lowlevel;
 #else
 int (*acpi_suspend_lowlevel)(void);
@@ -601,6 +625,7 @@ void __init acpi_set_irq_model_ioapic(void)
 #ifdef CONFIG_ACPI_HOTPLUG_CPU
 #include <acpi/processor.h>
 
+#ifndef CONFIG_XEN
 static void acpi_map_cpu2node(acpi_handle handle, int cpu, int physid)
 {
 #ifdef CONFIG_ACPI_NUMA
@@ -614,89 +639,36 @@ static void acpi_map_cpu2node(acpi_handle handle, int cpu, int physid)
 #endif
 }
 
-static int _acpi_map_lsapic(acpi_handle handle, int *pcpu)
+static int _acpi_map_lsapic(acpi_handle handle, int physid, int *pcpu)
 {
-	struct acpi_buffer buffer = { ACPI_ALLOCATE_BUFFER, NULL };
-	union acpi_object *obj;
-	struct acpi_madt_local_apic *lapic;
-	cpumask_var_t tmp_map, new_map;
-	u8 physid;
 	int cpu;
-	int retval = -ENOMEM;
 
-	if (ACPI_FAILURE(acpi_evaluate_object(handle, "_MAT", NULL, &buffer)))
-		return -EINVAL;
-
-	if (!buffer.length || !buffer.pointer)
-		return -EINVAL;
-
-	obj = buffer.pointer;
-	if (obj->type != ACPI_TYPE_BUFFER ||
-	    obj->buffer.length < sizeof(*lapic)) {
-		kfree(buffer.pointer);
-		return -EINVAL;
-	}
-
-	lapic = (struct acpi_madt_local_apic *)obj->buffer.pointer;
-
-	if (lapic->header.type != ACPI_MADT_TYPE_LOCAL_APIC ||
-	    !(lapic->lapic_flags & ACPI_MADT_ENABLED)) {
-		kfree(buffer.pointer);
-		return -EINVAL;
-	}
-
-	physid = lapic->id;
-
-	kfree(buffer.pointer);
-	buffer.length = ACPI_ALLOCATE_BUFFER;
-	buffer.pointer = NULL;
-	lapic = NULL;
-
-	if (!alloc_cpumask_var(&tmp_map, GFP_KERNEL))
-		goto out;
-
-	if (!alloc_cpumask_var(&new_map, GFP_KERNEL))
-		goto free_tmp_map;
-
-	cpumask_copy(tmp_map, cpu_present_mask);
-	acpi_register_lapic(physid, ACPI_MADT_ENABLED);
-
-	/*
-	 * If acpi_register_lapic successfully generates a new logical cpu
-	 * number, then the following will get us exactly what was mapped
-	 */
-	cpumask_andnot(new_map, cpu_present_mask, tmp_map);
-	if (cpumask_empty(new_map)) {
-		printk ("Unable to map lapic to logical cpu number\n");
-		retval = -EINVAL;
-		goto free_new_map;
+	cpu = acpi_register_lapic(physid, ACPI_MADT_ENABLED);
+	if (cpu < 0) {
+		pr_info(PREFIX "Unable to map lapic to logical cpu number\n");
+		return cpu;
 	}
 
 	acpi_processor_set_pdc(handle);
-
-	cpu = cpumask_first(new_map);
 	acpi_map_cpu2node(handle, cpu, physid);
 
 	*pcpu = cpu;
-	retval = 0;
-
-free_new_map:
-	free_cpumask_var(new_map);
-free_tmp_map:
-	free_cpumask_var(tmp_map);
-out:
-	return retval;
+	return 0;
 }
+#else
+#define _acpi_map_lsapic(h, p, c) (-EINVAL)
+#endif
 
 /* wrapper to silence section mismatch warning */
-int __ref acpi_map_lsapic(acpi_handle handle, int *pcpu)
+int __ref acpi_map_lsapic(acpi_handle handle, int physid, int *pcpu)
 {
-	return _acpi_map_lsapic(handle, pcpu);
+	return _acpi_map_lsapic(handle, physid, pcpu);
 }
 EXPORT_SYMBOL(acpi_map_lsapic);
 
 int acpi_unmap_lsapic(int cpu)
 {
+#ifndef CONFIG_XEN
 #ifdef CONFIG_ACPI_NUMA
 	set_apicid_to_node(per_cpu(x86_cpu_to_apicid, cpu), NUMA_NO_NODE);
 #endif
@@ -704,6 +676,7 @@ int acpi_unmap_lsapic(int cpu)
 	per_cpu(x86_cpu_to_apicid, cpu) = -1;
 	set_cpu_present(cpu, false);
 	num_processors--;
+#endif
 
 	return (0);
 }
@@ -745,7 +718,7 @@ static int __init acpi_parse_sbf(struct acpi_table_header *table)
 #ifdef CONFIG_HPET_TIMER
 #include <asm/hpet.h>
 
-static struct __initdata resource *hpet_res;
+static struct resource *hpet_res __initdata;
 
 static int __init acpi_parse_hpet(struct acpi_table_header *table)
 {
@@ -1348,6 +1321,7 @@ static int __init dmi_disable_acpi(const struct dmi_system_id *d)
 	return 0;
 }
 
+#ifndef CONFIG_XEN
 /*
  * Force ignoring BIOS IRQ0 override
  */
@@ -1359,6 +1333,22 @@ static int __init dmi_ignore_irq0_timer_override(const struct dmi_system_id *d)
 		acpi_skip_timer_override = 1;
 	}
 	return 0;
+}
+#endif
+
+static int __init force_acpi_rsdt(const struct dmi_system_id *d)
+{
+	if (!acpi_force) {
+		printk(KERN_NOTICE "%s detected: force use of acpi=rsdt\n",
+		       d->ident);
+		acpi_rsdt_forced = 1;
+	} else {
+		printk(KERN_NOTICE
+		       "Warning: acpi=force overrules DMI blacklist: "
+		       "acpi=rsdt\n");
+	}
+	return 0;
+
 }
 
 /*
@@ -1436,9 +1426,36 @@ static struct dmi_system_id __initdata acpi_dmi_table[] = {
 		     DMI_MATCH(DMI_PRODUCT_NAME, "TravelMate 360"),
 		     },
 	 },
+
+	/*
+	 * Boxes that need RSDT as ACPI root table
+	 */
+	{
+	    .callback = force_acpi_rsdt,
+	    .ident = "ThinkPad ", /* R40e, broken C-states */
+	    .matches = {
+		DMI_MATCH(DMI_BIOS_VENDOR, "IBM"),
+		DMI_MATCH(DMI_BIOS_VERSION, "1SET")},
+	},
+	{
+	    .callback = force_acpi_rsdt,
+	    .ident = "ThinkPad ", /* R50e, slow booting */
+	    .matches = {
+		DMI_MATCH(DMI_BIOS_VENDOR, "IBM"),
+		DMI_MATCH(DMI_BIOS_VERSION, "1WET")},
+	},
+	{
+	    .callback = force_acpi_rsdt,
+	    .ident = "ThinkPad ", /* T40, T40p, T41, T41p, T42, T42p
+				     R50, R50p */
+	    .matches = {
+		DMI_MATCH(DMI_BIOS_VENDOR, "IBM"),
+		DMI_MATCH(DMI_BIOS_VERSION, "1RET")},
+	},
 	{}
 };
 
+#ifndef CONFIG_XEN
 /* second table for DMI checks that should run after early-quirks */
 static struct dmi_system_id __initdata acpi_dmi_table_late[] = {
 	/*
@@ -1493,6 +1510,7 @@ static struct dmi_system_id __initdata acpi_dmi_table_late[] = {
 	 },
 	{}
 };
+#endif
 
 /*
  * acpi_boot_table_init() and acpi_boot_init()
@@ -1565,8 +1583,10 @@ int __init early_acpi_boot_init(void)
 
 int __init acpi_boot_init(void)
 {
+#ifndef CONFIG_XEN
 	/* those are executed after early-quirks are executed */
 	dmi_check_system(acpi_dmi_table_late);
+#endif
 
 	/*
 	 * If acpi_disabled, bail out
@@ -1635,6 +1655,18 @@ static int __init parse_acpi(char *arg)
 }
 early_param("acpi", parse_acpi);
 
+/* Alias for acpi=rsdt for compatibility with openSUSE 11.1 and SLE11 */
+static int __init parse_acpi_root_table(char *opt)
+{
+	if (!strcmp(opt, "rsdt")) {
+		acpi_rsdt_forced = 1;
+		printk(KERN_WARNING "acpi_root_table=rsdt is deprecated. "
+		       "Please use acpi=rsdt instead.\n");
+	}
+	return 0;
+}
+early_param("acpi_root_table", parse_acpi_root_table);
+
 /* FIXME: Using pci= for an ACPI parameter is a travesty. */
 static int __init parse_pci(char *arg)
 {
@@ -1658,7 +1690,7 @@ int __init acpi_mps_check(void)
 	return 0;
 }
 
-#ifdef CONFIG_X86_IO_APIC
+#if defined(CONFIG_X86_IO_APIC) && !defined(CONFIG_XEN)
 static int __init parse_acpi_skip_timer_override(char *arg)
 {
 	acpi_skip_timer_override = 1;

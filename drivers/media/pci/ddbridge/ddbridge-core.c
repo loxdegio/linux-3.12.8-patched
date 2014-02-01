@@ -3238,7 +3238,7 @@ static struct device_attribute ddb_attrs_led[] = {
 static struct class ddb_class = {
 	.name		= "ddbridge",
 	.owner          = THIS_MODULE,
-	.dev_attrs	= ddb_attrs,
+	//.dev_attrs	= ddb_attrs,
 	.devnode        = ddb_devnode,
 };
 

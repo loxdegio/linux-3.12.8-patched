@@ -92,6 +92,8 @@ static unsigned int skip_txen_test; /* force skip of txen test at init time */
 #define CONFIG_SERIAL_MANY_PORTS 1
 #endif
 
+#define arch_8250_sysrq_via_ctrl_o(a,b) 0
+
 /*
  * HUB6 is always on.  This will be removed once the header
  * files have been cleaned.
@@ -1358,7 +1360,11 @@ serial8250_rx_chars(struct uart_8250_port *up, unsigned char lsr)
 
 	do {
 		if (likely(lsr & UART_LSR_DR))
+		{
 			ch = serial_in(up, UART_RX);
+			if (arch_8250_sysrq_via_ctrl_o(ch, &up->port))
+				goto ignore_char;
+		}
 		else
 			/*
 			 * Intel 82571 has a Serial Over Lan device that will
@@ -2322,7 +2328,7 @@ serial8250_do_set_termios(struct uart_port *port, struct ktermios *termios,
 
 	if (up->capabilities & UART_CAP_FIFO && port->fifosize > 1) {
 		fcr = uart_config[port->type].fcr;
-		if (baud < 2400 || fifo_bug) {
+		if ((baud < 2400 && !up->dma) || fifo_bug) {
 			fcr &= ~UART_FCR_TRIGGER_MASK;
 			fcr |= UART_FCR_TRIGGER_1;
 		}

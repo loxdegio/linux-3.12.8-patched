@@ -210,6 +210,10 @@ static const struct tnt tnts[] = {
 	{ TAINT_CRAP,			'C', ' ' },
 	{ TAINT_FIRMWARE_WORKAROUND,	'I', ' ' },
 	{ TAINT_OOT_MODULE,		'O', ' ' },
+#ifdef CONFIG_SUSE_KERNEL_SUPPORTED
+	{ TAINT_NO_SUPPORT,		'N', ' ' },
+	{ TAINT_EXTERNAL_SUPPORT,	'X', ' ' },
+#endif
 };
 
 /**
@@ -228,12 +232,14 @@ static const struct tnt tnts[] = {
  *  'C' - modules from drivers/staging are loaded.
  *  'I' - Working around severe firmware bug.
  *  'O' - Out-of-tree module has been loaded.
+ *  'N' - Unsuported modules loaded.
+ *  'X' - Modules with external support loaded.
  *
  *	The string is overwritten by the next call to print_tainted().
  */
 const char *print_tainted(void)
 {
-	static char buf[ARRAY_SIZE(tnts) + sizeof("Tainted: ") + 1];
+	static char buf[ARRAY_SIZE(tnts) + sizeof("Tainted: ")];
 
 	if (tainted_mask) {
 		char *s;

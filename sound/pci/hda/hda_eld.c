@@ -317,18 +317,12 @@ int snd_hdmi_get_eld_size(struct hda_codec *codec, hda_nid_t nid)
 						 AC_DIPSIZE_ELD_BUF);
 }
 
-static int atihdmi_get_eld(struct hda_codec *codec, hda_nid_t nid,
-			   unsigned char *buf, int *eld_size);
-
 int snd_hdmi_get_eld(struct hda_codec *codec, hda_nid_t nid,
 		     unsigned char *buf, int *eld_size)
 {
 	int i;
 	int ret = 0;
 	int size;
-
-	if (is_atihdmi(codec))
-		return atihdmi_get_eld(codec, nid, buf, eld_size);
 
 	/*
 	 * ELD size is initialized to zero in caller function. If no errors and
@@ -485,10 +479,9 @@ static void hdmi_print_sad_info(int i, struct cea_sad *a,
 		snd_iprintf(buffer, "sad%d_profile\t\t%d\n", i, a->profile);
 }
 
-static void hdmi_print_eld_info(struct snd_info_entry *entry,
-				struct snd_info_buffer *buffer)
+void snd_hdmi_print_eld_info(struct hdmi_eld *eld,
+			     struct snd_info_buffer *buffer)
 {
-	struct hdmi_eld *eld = entry->private_data;
 	struct parsed_hdmi_eld *e = &eld->info;
 	char buf[SND_PRINT_CHANNEL_ALLOCATION_ADVISED_BUFSIZE];
 	int i;
@@ -507,13 +500,10 @@ static void hdmi_print_eld_info(struct snd_info_entry *entry,
 		[4 ... 7] = "reserved"
 	};
 
-	mutex_lock(&eld->lock);
 	snd_iprintf(buffer, "monitor_present\t\t%d\n", eld->monitor_present);
 	snd_iprintf(buffer, "eld_valid\t\t%d\n", eld->eld_valid);
-	if (!eld->eld_valid) {
-		mutex_unlock(&eld->lock);
+	if (!eld->eld_valid)
 		return;
-	}
 	snd_iprintf(buffer, "monitor_name\t\t%s\n", e->monitor_name);
 	snd_iprintf(buffer, "connection_type\t\t%s\n",
 				eld_connection_type_names[e->conn_type]);
@@ -535,13 +525,11 @@ static void hdmi_print_eld_info(struct snd_info_entry *entry,
 
 	for (i = 0; i < e->sad_count; i++)
 		hdmi_print_sad_info(i, e->sad + i, buffer);
-	mutex_unlock(&eld->lock);
 }
 
-static void hdmi_write_eld_info(struct snd_info_entry *entry,
-				struct snd_info_buffer *buffer)
+void snd_hdmi_write_eld_info(struct hdmi_eld *eld,
+			     struct snd_info_buffer *buffer)
 {
-	struct hdmi_eld *eld = entry->private_data;
 	struct parsed_hdmi_eld *e = &eld->info;
 	char line[64];
 	char name[64];
@@ -549,7 +537,6 @@ static void hdmi_write_eld_info(struct snd_info_entry *entry,
 	long long val;
 	unsigned int n;
 
-	mutex_lock(&eld->lock);
 	while (!snd_info_get_line(buffer, line, sizeof(line))) {
 		if (sscanf(line, "%s %llx", name, &val) != 2)
 			continue;
@@ -601,38 +588,7 @@ static void hdmi_write_eld_info(struct snd_info_entry *entry,
 				e->sad_count = n + 1;
 		}
 	}
-	mutex_unlock(&eld->lock);
 }
-
-
-int snd_hda_eld_proc_new(struct hda_codec *codec, struct hdmi_eld *eld,
-			 int index)
-{
-	char name[32];
-	struct snd_info_entry *entry;
-	int err;
-
-	snprintf(name, sizeof(name), "eld#%d.%d", codec->addr, index);
-	err = snd_card_proc_new(codec->bus->card, name, &entry);
-	if (err < 0)
-		return err;
-
-	snd_info_set_text_ops(entry, eld, hdmi_print_eld_info);
-	entry->c.text.write = hdmi_write_eld_info;
-	entry->mode |= S_IWUSR;
-	eld->proc_entry = entry;
-
-	return 0;
-}
-
-void snd_hda_eld_proc_free(struct hda_codec *codec, struct hdmi_eld *eld)
-{
-	if (!codec->bus->shutdown && eld->proc_entry) {
-		snd_device_free(codec->bus->card, eld->proc_entry);
-		eld->proc_entry = NULL;
-	}
-}
-
 #endif /* CONFIG_PROC_FS */
 
 /* update PCM info based on ELD */
@@ -713,8 +669,8 @@ enum ati_sink_info_idx {
 	ATI_INFO_IDX_SINK_DESC_LAST	= 22, /* max len 18 bytes */
 };
 
-static int atihdmi_get_eld(struct hda_codec *codec, hda_nid_t nid,
-			 unsigned char *buf, int *eld_size)
+int snd_hdmi_get_eld_ati(struct hda_codec *codec, hda_nid_t nid,
+			 unsigned char *buf, int *eld_size, bool rev3_or_later)
 {
 	int spkalloc, ati_sad, aud_synch;
 	int sink_desc_len = 0;
@@ -724,7 +680,7 @@ static int atihdmi_get_eld(struct hda_codec *codec, hda_nid_t nid,
 
 	spkalloc = snd_hda_codec_read(codec, nid, 0, ATI_VERB_GET_SPEAKER_ALLOCATION, 0);
 
-	if (!spkalloc) {
+	if (spkalloc <= 0) {
 		snd_printd(KERN_INFO "HDMI ATI/AMD: no speaker allocation for ELD\n");
 		return -EINVAL;
 	}
@@ -743,7 +699,7 @@ static int atihdmi_get_eld(struct hda_codec *codec, hda_nid_t nid,
 
 	pos = ELD_FIXED_BYTES;
 
-	if (is_amdhdmi_rev3(codec)) {
+	if (rev3_or_later) {
 		int sink_info;
 
 		snd_hda_codec_write(codec, nid, 0, ATI_VERB_SET_SINK_INFO_INDEX, ATI_INFO_IDX_PORT_ID_LOW);
@@ -786,6 +742,9 @@ static int atihdmi_get_eld(struct hda_codec *codec, hda_nid_t nid,
 		snd_hda_codec_write(codec, nid, 0, ATI_VERB_SET_AUDIO_DESCRIPTOR, i << 3);
 		ati_sad = snd_hda_codec_read(codec, nid, 0, ATI_VERB_GET_AUDIO_DESCRIPTOR, 0);
 
+		if (ati_sad <= 0)
+			continue;
+
 		if (ati_sad & ATI_AUDIODESC_RATES) {
 			/* format is supported, copy SAD as-is */
 			buf[pos++] = (ati_sad & 0x0000ff) >> 0;
@@ -809,20 +768,38 @@ static int atihdmi_get_eld(struct hda_codec *codec, hda_nid_t nid,
 		return -EINVAL;
 	}
 
+	/*
+	 * HDMI VSDB latency format:
+	 * separately for both audio and video:
+	 *  0          field not valid or unknown latency
+	 *  [1..251]   msecs = (x-1)*2  (max 500ms with x = 251 = 0xfb)
+	 *  255        audio/video not supported
+	 *
+	 * HDA latency format:
+	 * single value indicating video latency relative to audio:
+	 *  0          unknown or 0ms
+	 *  [1..250]   msecs = x*2  (max 500ms with x = 250 = 0xfa)
+	 *  [251..255] reserved
+	 */
 	aud_synch = snd_hda_codec_read(codec, nid, 0, ATI_VERB_GET_AUDIO_VIDEO_DELAY, 0);
 	if ((aud_synch & ATI_DELAY_VIDEO_LATENCY) && (aud_synch & ATI_DELAY_AUDIO_LATENCY)) {
-		int video_latency = (aud_synch & ATI_DELAY_VIDEO_LATENCY) - 1;
-		int audio_latency = ((aud_synch & ATI_DELAY_AUDIO_LATENCY) >> 8) - 1;
+		int video_latency_hdmi = (aud_synch & ATI_DELAY_VIDEO_LATENCY);
+		int audio_latency_hdmi = (aud_synch & ATI_DELAY_AUDIO_LATENCY) >> 8;
 
-		if (video_latency > audio_latency)
-			buf[6] = min(video_latency - audio_latency, 0xfa);
+		if (video_latency_hdmi <= 0xfb && audio_latency_hdmi <= 0xfb &&
+		    video_latency_hdmi > audio_latency_hdmi)
+			buf[6] = video_latency_hdmi - audio_latency_hdmi;
+		/* else unknown/invalid or 0ms or video ahead of audio, so use zero */
 	}
-
-	/* Baseline length */
-	buf[2] = pos - 4;
 
 	/* SAD count */
 	buf[5] |= ((pos - ELD_FIXED_BYTES - sink_desc_len) / 3) << 4;
+
+	/* Baseline ELD block length is 4-byte aligned */
+	pos = round_up(pos, 4);
+
+	/* Baseline ELD length (4-byte header is not counted in) */
+	buf[2] = (pos - 4) / 4;
 
 	*eld_size = pos;
 

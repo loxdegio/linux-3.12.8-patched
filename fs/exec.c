@@ -19,7 +19,7 @@
  * current->executable is only used by the procfs.  This allows a dispatch
  * table to check for several different types  of binary formats.  We keep
  * trying until we recognize the file or we run out of supported binary
- * formats. 
+ * formats.
  */
 
 #include <linux/slab.h>
@@ -55,6 +55,7 @@
 #include <linux/pipe_fs_i.h>
 #include <linux/oom.h>
 #include <linux/compat.h>
+#include <linux/ksm.h>
 
 #include <asm/uaccess.h>
 #include <asm/mmu_context.h>
@@ -106,6 +107,7 @@ static inline void put_binfmt(struct linux_binfmt * fmt)
  */
 SYSCALL_DEFINE1(uselib, const char __user *, library)
 {
+	struct linux_binfmt *fmt;
 	struct file *file;
 	struct filename *tmp = getname(library);
 	int error = PTR_ERR(tmp);
@@ -136,24 +138,21 @@ SYSCALL_DEFINE1(uselib, const char __user *, library)
 	fsnotify_open(file);
 
 	error = -ENOEXEC;
-	if(file->f_op) {
-		struct linux_binfmt * fmt;
 
-		read_lock(&binfmt_lock);
-		list_for_each_entry(fmt, &formats, lh) {
-			if (!fmt->load_shlib)
-				continue;
-			if (!try_module_get(fmt->module))
-				continue;
-			read_unlock(&binfmt_lock);
-			error = fmt->load_shlib(file);
-			read_lock(&binfmt_lock);
-			put_binfmt(fmt);
-			if (error != -ENOEXEC)
-				break;
-		}
+	read_lock(&binfmt_lock);
+	list_for_each_entry(fmt, &formats, lh) {
+		if (!fmt->load_shlib)
+			continue;
+		if (!try_module_get(fmt->module))
+			continue;
 		read_unlock(&binfmt_lock);
+		error = fmt->load_shlib(file);
+		read_lock(&binfmt_lock);
+		put_binfmt(fmt);
+		if (error != -ENOEXEC)
+			break;
 	}
+	read_unlock(&binfmt_lock);
 exit:
 	fput(file);
 out:
@@ -1143,7 +1142,7 @@ void setup_new_exec(struct linux_binprm * bprm)
 	   group */
 
 	current->self_exec_id++;
-			
+
 	flush_signal_handlers(current, 0);
 	do_close_on_exec(current->files);
 }
@@ -1269,21 +1268,18 @@ static int check_unsafe_exec(struct linux_binprm *bprm)
 	return res;
 }
 
-/* 
- * Fill the binprm structure from the inode. 
+/*
+ * Fill the binprm structure from the inode.
  * Check permissions, then read the first 128 (BINPRM_BUF_SIZE) bytes
  *
  * This may be called multiple times for binary chains (scripts for example).
  */
 int prepare_binprm(struct linux_binprm *bprm)
 {
-	umode_t mode;
-	struct inode * inode = file_inode(bprm->file);
+	struct inode *inode = file_inode(bprm->file);
+	umode_t mode = inode->i_mode;
 	int retval;
 
-	mode = inode->i_mode;
-	if (bprm->file->f_op == NULL)
-		return -EACCES;
 
 	/* clear any previous set[ug]id data from a previous binary */
 	bprm->cred->euid = current_euid();
@@ -1385,10 +1381,6 @@ int search_binary_handler(struct linux_binprm *bprm)
 	if (retval)
 		return retval;
 
-	retval = audit_bprm(bprm);
-	if (retval)
-		return retval;
-
 	retval = -ENOENT;
  retry:
 	read_lock(&binfmt_lock);
@@ -1436,6 +1428,7 @@ static int exec_binprm(struct linux_binprm *bprm)
 
 	ret = search_binary_handler(bprm);
 	if (ret >= 0) {
+		audit_bprm(bprm);
 		trace_sched_process_exec(current, old_pid, bprm);
 		ptrace_event(PTRACE_EVENT_EXEC, old_vpid);
 		current->did_exec = 1;
@@ -1547,6 +1540,7 @@ static int do_execve_common(const char *filename,
 	current->fs->in_exec = 0;
 	current->in_execve = 0;
 	acct_update_integrals(current);
+	task_numa_free(current);
 	free_bprm(bprm);
 	if (displaced)
 		put_files_struct(displaced);
