@@ -852,7 +852,7 @@ ENTRY(boot_gdt)
 	.quad 0x00cf9b000000ffff	/* kernel 4GB code at 0x00000000 */
 	.quad 0x00cf93000000ffff	/* kernel 4GB data at 0x00000000 */
 
-	.align PAGE_SIZE_asm
+	.align PAGE_SIZE
 ENTRY(cpu_gdt_table)
 	.rept NR_CPUS
 	.quad 0x0000000000000000	/* NULL descriptor */
