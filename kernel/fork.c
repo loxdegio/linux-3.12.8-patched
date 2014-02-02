@@ -369,8 +369,7 @@ static struct vm_area_struct *dup_vma(struct mm_struct *mm, struct mm_struct *ol
 	retval = vma_dup_policy(mpnt, tmp);
 	if (retval)
 		goto fail_nomem_policy;
-	if (anon_vma_fork(tmp, mpnt))
-		goto fail_nomem_anon_vma_fork;
+	if (anon_vma_fork(tmp, mpnt)) goto fail_nomem_anon_vma_fork;
 	tmp->vm_flags &= ~VM_LOCKED;
 	tmp->vm_next = tmp->vm_prev = NULL;
 	tmp->vm_mirror = NULL;
@@ -418,7 +417,7 @@ static __latent_entropy int dup_mmap(struct mm_struct *mm, struct mm_struct *old
 {
 	struct vm_area_struct *mpnt, *tmp, *prev, **pprev;
 	struct rb_node **rb_link, *rb_parent;
-	int retval;
+	int retval,charge;
 
 	uprobe_start_dup_mmap();
 	down_write(&oldmm->mmap_sem);
@@ -471,8 +470,7 @@ static __latent_entropy int dup_mmap(struct mm_struct *mm, struct mm_struct *old
 		if (retval)
 			goto fail_nomem_policy;
 		tmp->vm_mm = mm;
-		if (anon_vma_fork(tmp, mpnt))
-			goto fail_nomem_anon_vma_fork;
+		if (anon_vma_fork(tmp, mpnt)) goto fail_nomem_anon_vma_fork;
 		tmp->vm_flags &= ~VM_LOCKED;
 		tmp->vm_next = tmp->vm_prev = NULL;
 		file = tmp->vm_file;
@@ -555,6 +553,12 @@ static __latent_entropy int dup_mmap(struct mm_struct *mm, struct mm_struct *old
 	/* a new mm has just been created */
 	arch_dup_mmap(oldmm, mm);
 	retval = 0;
+fail_nomem_anon_vma_fork:
+	mpol_put(vma_policy(tmp));
+fail_nomem_policy:
+	kmem_cache_free(vm_area_cachep, tmp);
+fail_nomem:
+	vm_unacct_memory(charge);
 out:
 	up_write(&mm->mmap_sem);
 	flush_tlb_mm(oldmm);
