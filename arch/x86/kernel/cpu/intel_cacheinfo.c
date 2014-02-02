@@ -1081,6 +1081,22 @@ static struct kobj_type ktype_cache = {
 };
 
 #ifdef CONFIG_AMD_NB
+static struct attribute *default_attrs_amd_nb[] = {
+	&type.attr,
+	&level.attr,
+	&coherency_line_size.attr,
+	&physical_line_partition.attr,
+	&ways_of_associativity.attr,
+	&number_of_sets.attr,
+	&size.attr,
+	&shared_cpu_map.attr,
+	&shared_cpu_list.attr,
+	NULL,
+	NULL,
+	NULL,
+	NULL
+};
+
 static struct kobj_type ktype_cache_amd_nb = {
 	.sysfs_ops	= &sysfs_ops,
 	.default_attrs	= default_attrs_amd_nb,
