@@ -1029,18 +1029,7 @@ static struct attribute **amd_l3_attrs(void)
 
 	n = ARRAY_SIZE(default_attrs);
 
-	if (amd_nb_has_feature(AMD_NB_L3_INDEX_DISABLE))
-		n += 2;
-
-	if (amd_nb_has_feature(AMD_NB_L3_PARTITIONING))
-		n += 1;
-
-	attrs = kzalloc(n * sizeof (struct attribute *), GFP_KERNEL);
-	if (attrs == NULL)
-		return attrs = default_attrs;
-
-	for (n = 0; default_attrs[n]; n++)
-		attrs[n] = default_attrs[n];
+	attrs = default_attrs_amd_nb;
 
 	if (amd_nb_has_feature(AMD_NB_L3_INDEX_DISABLE)) {
 		attrs[n++] = &cache_disable_0.attr;
@@ -1090,6 +1079,13 @@ static struct kobj_type ktype_cache = {
 	.sysfs_ops	= &sysfs_ops,
 	.default_attrs	= default_attrs,
 };
+
+#ifdef CONFIG_AMD_NB
+static struct kobj_type ktype_cache_amd_nb = {
+	.sysfs_ops	= &sysfs_ops,
+	.default_attrs	= default_attrs_amd_nb,
+};
+#endif
 
 static struct kobj_type ktype_percpu_entry = {
 	.sysfs_ops	= &sysfs_ops,

@@ -7,6 +7,7 @@
 #include <linux/pci_regs.h>
 #include <linux/pci_ids.h>
 #include <linux/errno.h>
+#include <linux/sched.h>
 #include <asm/io.h>
 #include <asm/processor.h>
 #include <asm/fcntl.h>
@@ -26,8 +27,7 @@
 static int max_ypos = 25, max_xpos = 80;
 static int current_ypos = 25, current_xpos;
 
-static void early_vga_write(struct console *con, const char *str, unsigned n,
-                            unsigned int loglevel)
+static void early_vga_write(struct console *con, const char *str, unsigned n)
 {
 	char c;
 	int  i, k, j;
@@ -105,8 +105,7 @@ static int early_serial_putc(unsigned char ch)
 	return timeout ? 0 : -1;
 }
 
-static void early_serial_write(struct console *con, const char *s, unsigned n,
-                               unsigned int loglevel)
+static void early_serial_write(struct console *con, const char *s, unsigned n)
 {
 	while (*s && n-- > 0) {
 		if (*s == '\n')

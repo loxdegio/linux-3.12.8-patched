@@ -28,6 +28,13 @@
 #include <asm/page_types.h>
 #include <asm/cache.h>
 #include <asm/boot.h>
+#include <asm/segment.h>
+
+#if defined(CONFIG_X86_32) && defined(CONFIG_PAX_KERNEXEC)
+#define __KERNEL_TEXT_OFFSET	(LOAD_OFFSET + ____LOAD_PHYSICAL_ADDR)
+#else
+#define __KERNEL_TEXT_OFFSET	0
+#endif
 
 #undef i386     /* in case the preprocessor is a 32bit one */
 
@@ -110,13 +117,47 @@ SECTIONS
 		IRQENTRY_TEXT
 		*(.fixup)
 		*(.gnu.warning)
-		/* End of text section */
-		_etext = .;
 	} :text = 0x9090
 
-	NOTES :text :note
+	. += __KERNEL_TEXT_OFFSET;
 
-	EXCEPTION_TABLE(16) :text = 0x9090
+#ifdef CONFIG_X86_32
+	. = ALIGN(PAGE_SIZE);
+	.module.text : AT(ADDR(.module.text) - LOAD_OFFSET) {
+
+#ifdef CONFIG_PAX_KERNEXEC
+		MODULES_EXEC_VADDR = .;
+		BYTE(0)
+		. += (CONFIG_PAX_KERNEXEC_MODULE_TEXT * 1024 * 1024);
+		. = ALIGN(HPAGE_SIZE) - 1;
+		MODULES_EXEC_END = .;
+#endif
+
+	} :module
+#endif
+
+	.text.end : AT(ADDR(.text.end) - LOAD_OFFSET) {
+		/* End of text section */
+		BYTE(0)
+		_etext = . - __KERNEL_TEXT_OFFSET;
+	}
+
+#ifdef CONFIG_X86_32
+	. = ALIGN(PAGE_SIZE);
+	.rodata.page_aligned : AT(ADDR(.rodata.page_aligned) - LOAD_OFFSET) {
+		. = ALIGN(PAGE_SIZE);
+		*(.empty_zero_page)
+		*(.initial_pg_fixmap)
+		*(.initial_pg_pmd)
+		*(.initial_page_table)
+		*(.swapper_pg_dir)
+	} :rodata
+#endif
+
+	. = ALIGN(PAGE_SIZE);
+	NOTES :rodata :note
+
+	EXCEPTION_TABLE(16) :rodata
 
 #if defined(CONFIG_DEBUG_RODATA)
 	/* .text should occupy whole number of pages */
@@ -128,16 +169,20 @@ SECTIONS
 
 	/* Data */
 	.data : AT(ADDR(.data) - LOAD_OFFSET) {
+
+#ifdef CONFIG_PAX_KERNEXEC
+		. = ALIGN(HPAGE_SIZE);
+#else
+		. = ALIGN(PAGE_SIZE);
+#endif
+
 		/* Start of data section */
 		_sdata = .;
 
 		/* init_task */
 		INIT_TASK_DATA(THREAD_SIZE)
 
-#ifdef CONFIG_X86_32
-		/* 32 bit has nosave before _edata */
 		NOSAVE_DATA
-#endif
 
 		PAGE_ALIGNED_DATA(PAGE_SIZE)
 
@@ -178,12 +223,19 @@ SECTIONS
 #endif /* CONFIG_X86_64 */
 
 	/* Init code and data - will be freed after init */
-	. = ALIGN(PAGE_SIZE);
 	.init.begin : AT(ADDR(.init.begin) - LOAD_OFFSET) {
-		__init_begin = .; /* paired with __init_end */
-	}
+		BYTE(0)
 
-#if defined(CONFIG_X86_64) && defined(CONFIG_SMP)
+#ifdef CONFIG_PAX_KERNEXEC
+		. = ALIGN(HPAGE_SIZE);
+#else
+		. = ALIGN(PAGE_SIZE);
+#endif
+
+		__init_begin = .; /* paired with __init_end */
+	} :init.begin
+
+#ifdef CONFIG_SMP
 	/*
 	 * percpu offsets are zero-based on SMP.  PERCPU_VADDR() changes the
 	 * output PHDR, so the next output section - .init.text - should
@@ -192,12 +244,27 @@ SECTIONS
 	PERCPU_VADDR(INTERNODE_CACHE_BYTES, 0, :percpu)
 #endif
 
-	INIT_TEXT_SECTION(PAGE_SIZE)
-#ifdef CONFIG_X86_64
-	:init
-#endif
+	. = ALIGN(PAGE_SIZE);
+	init_begin = .;
+	.init.text (. - __KERNEL_TEXT_OFFSET): AT(init_begin - LOAD_OFFSET) {
+		VMLINUX_SYMBOL(_sinittext) = .;
+		INIT_TEXT
+		VMLINUX_SYMBOL(_einittext) = .;
+		. = ALIGN(PAGE_SIZE);
+	} :text.init
 
-	INIT_DATA_SECTION(16)
+	/*
+	 * .exit.text is discard at runtime, not link time, to deal with
+	 *  references from .altinstructions and .eh_frame
+	 */
+	.exit.text : AT(ADDR(.exit.text) - LOAD_OFFSET + __KERNEL_TEXT_OFFSET) {
+		EXIT_TEXT
+		. = ALIGN(16);
+	} :text.exit
+	. = init_begin + SIZEOF(.init.text) + SIZEOF(.exit.text);
+
+	. = ALIGN(PAGE_SIZE);
+	INIT_DATA_SECTION(16) :init
 
 	.x86_cpu_dev.init : AT(ADDR(.x86_cpu_dev.init) - LOAD_OFFSET) {
 		__x86_cpu_dev_start = .;
@@ -268,19 +335,12 @@ SECTIONS
 	}
 
 	. = ALIGN(8);
-	/*
-	 * .exit.text is discard at runtime, not link time, to deal with
-	 *  references from .altinstructions and .eh_frame
-	 */
-	.exit.text : AT(ADDR(.exit.text) - LOAD_OFFSET) {
-		EXIT_TEXT
-	}
 
 	.exit.data : AT(ADDR(.exit.data) - LOAD_OFFSET) {
 		EXIT_DATA
 	}
 
-#if !defined(CONFIG_X86_64) || !defined(CONFIG_SMP)
+#ifndef CONFIG_SMP
 	PERCPU_SECTION(INTERNODE_CACHE_BYTES)
 #endif
 
@@ -299,15 +359,9 @@ SECTIONS
 	.smp_locks : AT(ADDR(.smp_locks) - LOAD_OFFSET) {
 		__smp_locks = .;
 		*(.smp_locks)
-		. = ALIGN(PAGE_SIZE);
 		__smp_locks_end = .;
+		. = ALIGN(PAGE_SIZE);
 	}
-
-#ifdef CONFIG_X86_64
-	.data_nosave : AT(ADDR(.data_nosave) - LOAD_OFFSET) {
-		NOSAVE_DATA
-	}
-#endif
 
 	/* BSS */
 	. = ALIGN(PAGE_SIZE);
@@ -324,6 +378,7 @@ SECTIONS
 		__brk_base = .;
 		. += 64 * 1024;		/* 64k alignment slop space */
 		*(.brk_reservation)	/* areas brk users have reserved */
+		. = ALIGN(HPAGE_SIZE);
 		__brk_limit = .;
 	}
 
@@ -352,13 +407,12 @@ SECTIONS
  * for the boot processor.
  */
 #define INIT_PER_CPU(x) init_per_cpu__##x = x + __per_cpu_load
-INIT_PER_CPU(gdt_page);
 INIT_PER_CPU(irq_stack_union);
 
 /*
  * Build-time check on the image size:
  */
-. = ASSERT((_end - _text <= KERNEL_IMAGE_SIZE),
+. = ASSERT((_end - _text - __KERNEL_TEXT_OFFSET <= KERNEL_IMAGE_SIZE),
 	   "kernel image bigger than KERNEL_IMAGE_SIZE");
 
 #ifdef CONFIG_SMP

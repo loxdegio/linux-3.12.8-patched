@@ -67,14 +67,6 @@ const struct linux_logo * __init_refok fb_find_logo(int depth)
 		/* Generic Linux logo */
 		logo = &logo_linux_clut224;
 #endif
-#ifdef CONFIG_LOGO_LARRY_CLUT224
-		/* Gentoo-ised 224-colour Larry logo */
-		logo = &logo_larry_clut224;
-#endif
-#ifdef CONFIG_LOGO_LARRY_HEAD_CLUT224
-		/* Gentoo-ised 224-colour Larry head logo */
-		logo = &logo_larry_head_clut224;
-#endif
 #ifdef CONFIG_LOGO_BLACKFIN_CLUT224
 		/* Blackfin Linux logo */
 		logo = &logo_blackfin_clut224;

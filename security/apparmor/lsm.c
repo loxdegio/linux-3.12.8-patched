@@ -714,7 +714,7 @@ static int apparmor_socket_shutdown(struct socket *sock, int how)
 	return aa_revalidate_sk(OP_SOCK_SHUTDOWN, sk);
 }
 
-static struct security_operations apparmor_ops = {
+static struct security_operations apparmor_ops __read_only = {
 	.name =				"apparmor",
 
 	.ptrace_access_check =		apparmor_ptrace_access_check,

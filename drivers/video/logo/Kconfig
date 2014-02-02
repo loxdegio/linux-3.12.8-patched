@@ -27,16 +27,6 @@ config LOGO_LINUX_CLUT224
 	bool "Standard 224-color Linux logo"
 	default y
 
-config LOGO_LARRY_CLUT224
-	bool "Gentoo-ised 224-colour Larry logo"
-	depends on LOGO
-	default y
-
-config LOGO_LARRY_HEAD_CLUT224
-	bool "Gentoo-ised 224-colour Larry head logo"
-	depends on LOGO
-	default y
-
 config LOGO_BLACKFIN_VGA16
 	bool "16-colour Blackfin Processor Linux logo"
 	depends on BLACKFIN

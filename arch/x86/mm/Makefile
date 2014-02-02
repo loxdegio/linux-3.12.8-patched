@@ -33,3 +33,7 @@ obj-$(CONFIG_XEN)		+= hypervisor.o
 disabled-obj-$(CONFIG_XEN)	:= gup.o
 
 obj-$(CONFIG_MEMTEST)		+= memtest.o
+
+quote:="
+obj-$(CONFIG_X86_64)		+= uderef_64.o
+CFLAGS_uderef_64.o		:= $(subst $(quote),,$(CONFIG_ARCH_HWEIGHT_CFLAGS))

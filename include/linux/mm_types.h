@@ -310,6 +310,8 @@ struct vm_area_struct {
 #ifdef CONFIG_UKSM
 	struct vma_slot *uksm_vma_slot;
 #endif
+
+	struct vm_area_struct *vm_mirror;/* PaX: mirror vma or NULL */
 };
 
 struct core_thread {
@@ -456,6 +458,24 @@ struct mm_struct {
 	bool tlb_flush_pending;
 #endif
 	struct uprobes_state uprobes_state;
+
+#if defined(CONFIG_PAX_NOEXEC) || defined(CONFIG_PAX_ASLR)
+	unsigned long pax_flags;
+#endif
+
+#ifdef CONFIG_PAX_DLRESOLVE
+	unsigned long call_dl_resolve;
+#endif
+
+#if defined(CONFIG_PPC32) && defined(CONFIG_PAX_EMUSIGRT)
+	unsigned long call_syscall;
+#endif
+
+#ifdef CONFIG_PAX_ASLR
+	unsigned long delta_mmap;		/* randomized offset */
+	unsigned long delta_stack;		/* randomized offset */
+#endif
+
 };
 
 static inline void mm_init_cpumask(struct mm_struct *mm)
