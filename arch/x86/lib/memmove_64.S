@@ -202,16 +202,14 @@ ENTRY(memmove)
 	movb (%rsi), %r11b
 	movb %r11b, (%rdi)
 13:
-	pax_force_retaddr
 	retq
 	CFI_ENDPROC
 
-	.section .altinstr_replacement,"a"
+	.section .altinstr_replacement,"ax"
 .Lmemmove_begin_forward_efs:
 	/* Forward moving data. */
 	movq %rdx, %rcx
 	rep movsb
-	pax_force_retaddr
 	retq
 .Lmemmove_end_forward_efs:
 	.previous

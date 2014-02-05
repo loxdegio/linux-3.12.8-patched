@@ -55,9 +55,6 @@ u64 _paravirt_ident_64(u64 x)
 {
 	return x;
 }
-#if defined(CONFIG_X86_32) && defined(CONFIG_X86_PAE)
-PV_CALLEE_SAVE_REGS_THUNK(_paravirt_ident_64);
-#endif
 
 void __init default_banner(void)
 {
@@ -145,19 +142,15 @@ unsigned paravirt_patch_default(u8 type, u16 clobbers, void *insnbuf,
 	if (opfunc == NULL)
 		/* If there's no function, patch it with a ud2a (BUG) */
 		ret = paravirt_patch_insns(insnbuf, len, ud2a, ud2a+sizeof(ud2a));
-	else if (opfunc == (void *)_paravirt_nop)
+	else if (opfunc == _paravirt_nop)
 		/* If the operation is a nop, then nop the callsite */
 		ret = paravirt_patch_nop();
 
 	/* identity functions just return their single argument */
-	else if (opfunc == (void *)_paravirt_ident_32)
+	else if (opfunc == _paravirt_ident_32)
 		ret = paravirt_patch_ident_32(insnbuf, len);
-	else if (opfunc == (void *)_paravirt_ident_64)
+	else if (opfunc == _paravirt_ident_64)
 		ret = paravirt_patch_ident_64(insnbuf, len);
-#if defined(CONFIG_X86_32) && defined(CONFIG_X86_PAE)
-	else if (opfunc == (void *)__raw_callee_save__paravirt_ident_64)
-		ret = paravirt_patch_ident_64(insnbuf, len);
-#endif
 
 	else if (type == PARAVIRT_PATCH(pv_cpu_ops.iret) ||
 		 type == PARAVIRT_PATCH(pv_cpu_ops.irq_enable_sysexit) ||
@@ -182,7 +175,7 @@ unsigned paravirt_patch_insns(void *insnbuf, unsigned len,
 	if (insn_len > len || start == NULL)
 		insn_len = len;
 	else
-		memcpy(insnbuf, ktla_ktva(start), insn_len);
+		memcpy(insnbuf, start, insn_len);
 
 	return insn_len;
 }
@@ -306,7 +299,7 @@ enum paravirt_lazy_mode paravirt_get_lazy_mode(void)
 	return this_cpu_read(paravirt_lazy_mode);
 }
 
-struct pv_info pv_info __read_only = {
+struct pv_info pv_info = {
 	.name = "bare hardware",
 	.paravirt_enabled = 0,
 	.kernel_rpl = 0,
@@ -317,16 +310,16 @@ struct pv_info pv_info __read_only = {
 #endif
 };
 
-struct pv_init_ops pv_init_ops __read_only = {
+struct pv_init_ops pv_init_ops = {
 	.patch = native_patch,
 };
 
-struct pv_time_ops pv_time_ops __read_only = {
+struct pv_time_ops pv_time_ops = {
 	.sched_clock = native_sched_clock,
 	.steal_clock = native_steal_clock,
 };
 
-__visible struct pv_irq_ops pv_irq_ops __read_only = {
+__visible struct pv_irq_ops pv_irq_ops = {
 	.save_fl = __PV_IS_CALLEE_SAVE(native_save_fl),
 	.restore_fl = __PV_IS_CALLEE_SAVE(native_restore_fl),
 	.irq_disable = __PV_IS_CALLEE_SAVE(native_irq_disable),
@@ -338,7 +331,7 @@ __visible struct pv_irq_ops pv_irq_ops __read_only = {
 #endif
 };
 
-__visible struct pv_cpu_ops pv_cpu_ops __read_only = {
+__visible struct pv_cpu_ops pv_cpu_ops = {
 	.cpuid = native_cpuid,
 	.get_debugreg = native_get_debugreg,
 	.set_debugreg = native_set_debugreg,
@@ -396,26 +389,21 @@ __visible struct pv_cpu_ops pv_cpu_ops __read_only = {
 	.end_context_switch = paravirt_nop,
 };
 
-struct pv_apic_ops pv_apic_ops __read_only= {
+struct pv_apic_ops pv_apic_ops = {
 #ifdef CONFIG_X86_LOCAL_APIC
 	.startup_ipi_hook = paravirt_nop,
 #endif
 };
 
-#ifdef CONFIG_X86_32
-#ifdef CONFIG_X86_PAE
-/* 64-bit pagetable entries */
-#define PTE_IDENT	PV_CALLEE_SAVE(_paravirt_ident_64)
-#else
+#if defined(CONFIG_X86_32) && !defined(CONFIG_X86_PAE)
 /* 32-bit pagetable entries */
 #define PTE_IDENT	__PV_IS_CALLEE_SAVE(_paravirt_ident_32)
-#endif
 #else
 /* 64-bit pagetable entries */
 #define PTE_IDENT	__PV_IS_CALLEE_SAVE(_paravirt_ident_64)
 #endif
 
-struct pv_mmu_ops pv_mmu_ops __read_only = {
+struct pv_mmu_ops pv_mmu_ops = {
 
 	.read_cr2 = native_read_cr2,
 	.write_cr2 = native_write_cr2,
@@ -465,7 +453,6 @@ struct pv_mmu_ops pv_mmu_ops __read_only = {
 	.make_pud = PTE_IDENT,
 
 	.set_pgd = native_set_pgd,
-	.set_pgd_batched = native_set_pgd_batched,
 #endif
 #endif /* PAGETABLE_LEVELS >= 3 */
 
@@ -486,12 +473,6 @@ struct pv_mmu_ops pv_mmu_ops __read_only = {
 	},
 
 	.set_fixmap = native_set_fixmap,
-
-#ifdef CONFIG_PAX_KERNEXEC
-	.pax_open_kernel = native_pax_open_kernel,
-	.pax_close_kernel = native_pax_close_kernel,
-#endif
-
 };
 
 EXPORT_SYMBOL_GPL(pv_time_ops);

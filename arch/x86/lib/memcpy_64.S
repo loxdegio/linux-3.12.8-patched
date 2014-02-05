@@ -24,7 +24,7 @@
  * This gets patched over the unrolled variant (below) via the
  * alternative instructions framework:
  */
-	.section .altinstr_replacement, "a", @progbits
+	.section .altinstr_replacement, "ax", @progbits
 .Lmemcpy_c:
 	movq %rdi, %rax
 	movq %rdx, %rcx
@@ -33,7 +33,6 @@
 	rep movsq
 	movl %edx, %ecx
 	rep movsb
-	pax_force_retaddr
 	ret
 .Lmemcpy_e:
 	.previous
@@ -45,12 +44,11 @@
  * This gets patched over the unrolled variant (below) via the
  * alternative instructions framework:
  */
-	.section .altinstr_replacement, "a", @progbits
+	.section .altinstr_replacement, "ax", @progbits
 .Lmemcpy_c_e:
 	movq %rdi, %rax
 	movq %rdx, %rcx
 	rep movsb
-	pax_force_retaddr
 	ret
 .Lmemcpy_e_e:
 	.previous
@@ -138,7 +136,6 @@ ENTRY(memcpy)
 	movq %r9,	1*8(%rdi)
 	movq %r10,	-2*8(%rdi, %rdx)
 	movq %r11,	-1*8(%rdi, %rdx)
-	pax_force_retaddr
 	retq
 	.p2align 4
 .Lless_16bytes:
@@ -151,7 +148,6 @@ ENTRY(memcpy)
 	movq -1*8(%rsi, %rdx),	%r9
 	movq %r8,	0*8(%rdi)
 	movq %r9,	-1*8(%rdi, %rdx)
-	pax_force_retaddr
 	retq
 	.p2align 4
 .Lless_8bytes:
@@ -165,7 +161,6 @@ ENTRY(memcpy)
 	movl -4(%rsi, %rdx), %r8d
 	movl %ecx, (%rdi)
 	movl %r8d, -4(%rdi, %rdx)
-	pax_force_retaddr
 	retq
 	.p2align 4
 .Lless_3bytes:
@@ -184,7 +179,6 @@ ENTRY(memcpy)
 	movb %cl, (%rdi)
 
 .Lend:
-	pax_force_retaddr
 	retq
 	CFI_ENDPROC
 ENDPROC(memcpy)

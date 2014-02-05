@@ -176,7 +176,7 @@ static ssize_t notes_read(struct file *filp, struct kobject *kobj,
 	return count;
 }
 
-static bin_attribute_no_const notes_attr __read_only = {
+static struct bin_attribute notes_attr = {
 	.attr = {
 		.name = "notes",
 		.mode = S_IRUGO,

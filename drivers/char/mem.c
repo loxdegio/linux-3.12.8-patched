@@ -121,7 +121,6 @@ static ssize_t read_mem(struct file *file, char __user *buf,
 
 	while (count > 0) {
 		unsigned long remaining;
-		char *temp;
 
 		sz = size_inside_page(p, count);
 
@@ -137,23 +136,7 @@ static ssize_t read_mem(struct file *file, char __user *buf,
 		if (!ptr)
 			return -EFAULT;
 
-#ifdef CONFIG_PAX_USERCOPY
-		temp = kmalloc(sz, GFP_KERNEL|GFP_USERCOPY);
-		if (!temp) {
-			unxlate_dev_mem_ptr(p, ptr);
-			return -ENOMEM;
-		}
-		memcpy(temp, ptr, sz);
-#else
-		temp = ptr;
-#endif
-
-		remaining = copy_to_user(buf, temp, sz);
-
-#ifdef CONFIG_PAX_USERCOPY
-		kfree(temp);
-#endif
-
+		remaining = copy_to_user(buf, ptr, sz);
 		unxlate_dev_mem_ptr(p, ptr);
 		if (remaining)
 			return -EFAULT;
@@ -393,8 +376,9 @@ static ssize_t read_kmem(struct file *file, char __user *buf,
 			 size_t count, loff_t *ppos)
 {
 	unsigned long p = *ppos;
-	ssize_t low_count, read, sz, err = 0;
+	ssize_t low_count, read, sz;
 	char *kbuf; /* k-addr because vread() takes vmlist_lock rwlock */
+	int err = 0;
 
 	read = 0;
 	if (p < (unsigned long) high_memory) {
@@ -416,8 +400,6 @@ static ssize_t read_kmem(struct file *file, char __user *buf,
 		}
 #endif
 		while (low_count > 0) {
-			char *temp;
-
 			sz = size_inside_page(p, low_count);
 
 			/*
@@ -427,22 +409,7 @@ static ssize_t read_kmem(struct file *file, char __user *buf,
 			 */
 			kbuf = xlate_dev_kmem_ptr((char *)p);
 
-#ifdef CONFIG_PAX_USERCOPY
-			temp = kmalloc(sz, GFP_KERNEL|GFP_USERCOPY);
-			if (!temp)
-				return -ENOMEM;
-			memcpy(temp, kbuf, sz);
-#else
-			temp = kbuf;
-#endif
-
-			err = copy_to_user(buf, temp, sz);
-
-#ifdef CONFIG_PAX_USERCOPY
-			kfree(temp);
-#endif
-
-			if (err)
+			if (copy_to_user(buf, kbuf, sz))
 				return -EFAULT;
 			buf += sz;
 			p += sz;
@@ -942,7 +909,7 @@ static int __init chr_dev_init(void)
 			continue;
 
 		device_create(mem_class, NULL, MKDEV(MEM_MAJOR, minor),
-			      NULL, "%s", devlist[minor].name);
+			      NULL, devlist[minor].name);
 	}
 
 	return tty_init();

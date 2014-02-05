@@ -3,7 +3,6 @@
 #include <asm/dwarf2.h>
 #include <asm/asm.h>
 #include <asm/msr.h>
-#include <asm/alternative-asm.h>
 
 #ifdef CONFIG_X86_64
 /*
@@ -38,7 +37,6 @@ ENTRY(\op\()_safe_regs)
 	movl    %edi, 28(%r10)
 	popq_cfi %rbp
 	popq_cfi %rbx
-	pax_force_retaddr
 	ret
 3:
 	CFI_RESTORE_STATE

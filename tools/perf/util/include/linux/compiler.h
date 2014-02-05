@@ -27,12 +27,4 @@
 # define __weak			__attribute__((weak))
 #endif
 
-#ifndef __size_overflow
-# define __size_overflow(...)
-#endif
-
-#ifndef __intentional_overflow
-# define __intentional_overflow(...)
-#endif
-
 #endif

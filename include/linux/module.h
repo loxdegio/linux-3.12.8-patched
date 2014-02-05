@@ -17,11 +17,9 @@
 #include <linux/moduleparam.h>
 #include <linux/tracepoint.h>
 #include <linux/export.h>
-#include <linux/fs.h>
 
 #include <linux/percpu.h>
 #include <asm/module.h>
-#include <asm/pgtable.h>
 
 /* In stripped ARM and x86-64 modules, ~ is surprisingly rare. */
 #define MODULE_SIG_STRING "~Module signature appended~\n"
@@ -57,13 +55,12 @@ struct module_attribute {
 	int (*test)(struct module *);
 	void (*free)(struct module *);
 };
-typedef struct module_attribute __no_const module_attribute_no_const;
 
 struct module_version_attribute {
 	struct module_attribute mattr;
 	const char *module_name;
 	const char *version;
-} __do_const __attribute__ ((__aligned__(sizeof(void *))));
+} __attribute__ ((__aligned__(sizeof(void *))));
 
 extern ssize_t __modver_version_show(struct module_attribute *,
 				     struct module_kobject *, char *);
@@ -241,7 +238,7 @@ struct module
 
 	/* Sysfs stuff. */
 	struct module_kobject mkobj;
-	module_attribute_no_const *modinfo_attrs;
+	struct module_attribute *modinfo_attrs;
 	const char *version;
 	const char *srcversion;
 	struct kobject *holders_dir;
@@ -290,16 +287,19 @@ struct module
 	int (*init)(void);
 
 	/* If this is non-NULL, vfree after init() returns */
-	void *module_init_rx, *module_init_rw;
+	void *module_init;
 
 	/* Here is the actual code + data, vfree'd on unload. */
-	void *module_core_rx, *module_core_rw;
+	void *module_core;
 
 	/* Here are the sizes of the init and core sections */
-	unsigned int init_size_rw, core_size_rw;
+	unsigned int init_size, core_size;
 
 	/* The size of the executable code in each section.  */
-	unsigned int init_size_rx, core_size_rx;
+	unsigned int init_text_size, core_text_size;
+
+	/* Size of RO sections of the module (text+rodata) */
+	unsigned int init_ro_size, core_ro_size;
 
 	/* The handle returned from unwind_add_table. */
 	void *unwind_info;
@@ -358,10 +358,6 @@ struct module
 #ifdef CONFIG_EVENT_TRACING
 	struct ftrace_event_call **trace_events;
 	unsigned int num_trace_events;
-	struct file_operations trace_id;
-	struct file_operations trace_enable;
-	struct file_operations trace_format;
-	struct file_operations trace_filter;
 #endif
 #ifdef CONFIG_FTRACE_MCOUNT_RECORD
 	unsigned int num_ftrace_callsites;
@@ -409,46 +405,16 @@ bool is_module_text_address(unsigned long addr);
 const char *supported_printable(int taint);
 #endif
 
-static inline int within_module_range(unsigned long addr, void *start, unsigned long size)
-{
-
-#ifdef CONFIG_PAX_KERNEXEC
-	if (ktla_ktva(addr) >= (unsigned long)start &&
-	    ktla_ktva(addr) < (unsigned long)start + size)
-		return 1;
-#endif
-
-	return ((void *)addr >= start && (void *)addr < start + size);
-}
-
-static inline int within_module_core_rx(unsigned long addr, const struct module *mod)
-{
-	return within_module_range(addr, mod->module_core_rx, mod->core_size_rx);
-}
-
-static inline int within_module_core_rw(unsigned long addr, const struct module *mod)
-{
-	return within_module_range(addr, mod->module_core_rw, mod->core_size_rw);
-}
-
-static inline int within_module_init_rx(unsigned long addr, const struct module *mod)
-{
-	return within_module_range(addr, mod->module_init_rx, mod->init_size_rx);
-}
-
-static inline int within_module_init_rw(unsigned long addr, const struct module *mod)
-{
-	return within_module_range(addr, mod->module_init_rw, mod->init_size_rw);
-}
-
 static inline int within_module_core(unsigned long addr, const struct module *mod)
 {
-	return within_module_core_rx(addr, mod) || within_module_core_rw(addr, mod);
+	return (unsigned long)mod->module_core <= addr &&
+	       addr < (unsigned long)mod->module_core + mod->core_size;
 }
 
 static inline int within_module_init(unsigned long addr, const struct module *mod)
 {
-	return within_module_init_rx(addr, mod) || within_module_init_rw(addr, mod);
+	return (unsigned long)mod->module_init <= addr &&
+	       addr < (unsigned long)mod->module_init + mod->init_size;
 }
 
 /* Search for module by name: must hold module_mutex. */

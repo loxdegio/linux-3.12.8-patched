@@ -8,7 +8,6 @@
 
 #include <linux/linkage.h>
 #include <asm/dwarf2.h>
-#include <asm/alternative-asm.h>
 
 #define FIX_ALIGNMENT 1
 
@@ -17,7 +16,6 @@
 #include <asm/thread_info.h>
 #include <asm/asm.h>
 #include <asm/smap.h>
-#include <asm/pgtable.h>
 
 	.macro ALIGN_DESTINATION
 #ifdef FIX_ALIGNMENT
@@ -51,16 +49,6 @@
  */
 ENTRY(__copy_user_nocache)
 	CFI_STARTPROC
-
-#ifdef CONFIG_PAX_MEMORY_UDEREF
-	mov pax_user_shadow_base,%rcx
-	cmp %rcx,%rsi
-	jae 1f
-	add %rcx,%rsi
-1:
-#endif
-
-	ASM_PAX_OPEN_USERLAND
 	ASM_STAC
 	cmpl $8,%edx
 	jb 20f		/* less then 8 bytes, go to byte copy loop */
@@ -110,9 +98,7 @@ ENTRY(__copy_user_nocache)
 	jnz 21b
 23:	xorl %eax,%eax
 	ASM_CLAC
-	ASM_PAX_CLOSE_USERLAND
 	sfence
-	pax_force_retaddr
 	ret
 
 	.section .fixup,"ax"

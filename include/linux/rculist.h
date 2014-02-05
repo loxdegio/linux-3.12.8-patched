@@ -29,8 +29,8 @@
  */
 static inline void INIT_LIST_HEAD_RCU(struct list_head *list)
 {
-	ACCESS_ONCE_RW(list->next) = list;
-	ACCESS_ONCE_RW(list->prev) = list;
+	ACCESS_ONCE(list->next) = list;
+	ACCESS_ONCE(list->prev) = list;
 }
 
 /*
@@ -59,9 +59,6 @@ extern void __list_add_rcu(struct list_head *new,
 		struct list_head *prev, struct list_head *next);
 #endif
 
-extern void __pax_list_add_rcu(struct list_head *new,
-		struct list_head *prev, struct list_head *next);
-
 /**
  * list_add_rcu - add a new entry to rcu-protected list
  * @new: new entry to be added
@@ -81,11 +78,6 @@ extern void __pax_list_add_rcu(struct list_head *new,
 static inline void list_add_rcu(struct list_head *new, struct list_head *head)
 {
 	__list_add_rcu(new, head, head->next);
-}
-
-static inline void pax_list_add_rcu(struct list_head *new, struct list_head *head)
-{
-	__pax_list_add_rcu(new, head, head->next);
 }
 
 /**
@@ -108,12 +100,6 @@ static inline void list_add_tail_rcu(struct list_head *new,
 					struct list_head *head)
 {
 	__list_add_rcu(new, head->prev, head);
-}
-
-static inline void pax_list_add_tail_rcu(struct list_head *new,
-					struct list_head *head)
-{
-	__pax_list_add_rcu(new, head->prev, head);
 }
 
 /**
@@ -145,8 +131,6 @@ static inline void list_del_rcu(struct list_head *entry)
 	__list_del_entry(entry);
 	entry->prev = LIST_POISON2;
 }
-
-extern void pax_list_del_rcu(struct list_head *entry);
 
 /**
  * hlist_del_init_rcu - deletes entry from hash list with re-initialization

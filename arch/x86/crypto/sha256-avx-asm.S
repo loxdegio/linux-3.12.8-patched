@@ -49,7 +49,6 @@
 
 #ifdef CONFIG_AS_AVX
 #include <linux/linkage.h>
-#include <asm/alternative-asm.h>
 
 ## assume buffers not aligned
 #define    VMOVDQ vmovdqu
@@ -461,7 +460,6 @@ done_hash:
 	popq    %r13
 	popq    %rbp
 	popq    %rbx
-	pax_force_retaddr
 	ret
 ENDPROC(sha256_transform_avx)
 

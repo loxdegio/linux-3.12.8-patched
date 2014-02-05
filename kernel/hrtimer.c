@@ -1438,7 +1438,7 @@ void hrtimer_peek_ahead_timers(void)
 	local_irq_restore(flags);
 }
 
-static __latent_entropy void run_hrtimer_softirq(void)
+static void run_hrtimer_softirq(struct softirq_action *h)
 {
 	hrtimer_peek_ahead_timers();
 }

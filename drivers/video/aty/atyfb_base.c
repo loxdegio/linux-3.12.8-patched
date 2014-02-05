@@ -1326,14 +1326,10 @@ static int atyfb_set_par(struct fb_info *info)
 	par->accel_flags = var->accel_flags; /* hack */
 
 	if (var->accel_flags) {
-		pax_open_kernel();
-		*(void **)&info->fbops->fb_sync = atyfb_sync;
-		pax_close_kernel();
+		info->fbops->fb_sync = atyfb_sync;
 		info->flags &= ~FBINFO_HWACCEL_DISABLED;
 	} else {
-		pax_open_kernel();
-		*(void **)&info->fbops->fb_sync = NULL;
-		pax_close_kernel();
+		info->fbops->fb_sync = NULL;
 		info->flags |= FBINFO_HWACCEL_DISABLED;
 	}
 

@@ -352,10 +352,10 @@ config KSM_LEGACY
 endchoice
 
 config DEFAULT_MMAP_MIN_ADDR
-	int "Low address space to protect from user allocation"
+        int "Low address space to protect from user allocation"
 	depends on MMU
-	default 32768
-	help
+        default 4096
+        help
 	  This is the portion of low virtual memory which should be protected
 	  from userspace allocation.  Keeping a user from writing to low pages
 	  can help reduce the impact of kernel NULL pointer bugs.

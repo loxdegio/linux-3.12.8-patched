@@ -1355,7 +1355,7 @@ static int __init force_acpi_rsdt(const struct dmi_system_id *d)
  * If your system is blacklisted here, but you find that acpi=force
  * works for you, please contact linux-acpi@vger.kernel.org
  */
-static const struct dmi_system_id __initconst acpi_dmi_table[] = {
+static struct dmi_system_id __initdata acpi_dmi_table[] = {
 	/*
 	 * Boxes that need ACPI disabled
 	 */
@@ -1457,7 +1457,7 @@ static const struct dmi_system_id __initconst acpi_dmi_table[] = {
 
 #ifndef CONFIG_XEN
 /* second table for DMI checks that should run after early-quirks */
-static const struct dmi_system_id __initconst acpi_dmi_table_late[] = {
+static struct dmi_system_id __initdata acpi_dmi_table_late[] = {
 	/*
 	 * HP laptops which use a DSDT reporting as HP/SB400/10000,
 	 * which includes some code which overrides all temperature

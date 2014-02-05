@@ -81,10 +81,6 @@ arch_get_unmapped_area(struct file *filp, unsigned long addr,
 	if (len > TASK_SIZE)
 		return -ENOMEM;
 
-#ifdef CONFIG_PAX_RANDMMAP
-	if (!(mm->pax_flags & MF_PAX_RANDMMAP))
-#endif
-
 	if (addr) {
 		if (do_align)
 			addr = COLOUR_ALIGN(addr, pgoff);
@@ -92,7 +88,8 @@ arch_get_unmapped_area(struct file *filp, unsigned long addr,
 			addr = PAGE_ALIGN(addr);
 
 		vma = find_vma(mm, addr);
-		if (TASK_SIZE - len >= addr && check_heap_stack_gap(vma, addr, len))
+		if (TASK_SIZE - len >= addr &&
+		    (!vma || addr + len <= vma->vm_start))
 			return addr;
 	}
 
@@ -135,10 +132,6 @@ arch_get_unmapped_area_topdown(struct file *filp, const unsigned long addr0,
 		return addr;
 	}
 
-#ifdef CONFIG_PAX_RANDMMAP
-	if (!(mm->pax_flags & MF_PAX_RANDMMAP))
-#endif
-
 	/* requesting a specific address */
 	if (addr) {
 		if (do_align)
@@ -146,7 +139,8 @@ arch_get_unmapped_area_topdown(struct file *filp, const unsigned long addr0,
 		else
 			addr = PAGE_ALIGN(addr);
 		vma = find_vma(mm, addr);
-		if (TASK_SIZE - len >= addr && check_heap_stack_gap(vma, addr, len))
+		if (TASK_SIZE - len >= addr &&
+				(!vma || addr + len <= vma->vm_start))
 			return addr;
 	}
 
@@ -179,10 +173,6 @@ void arch_pick_mmap_layout(struct mm_struct *mm)
 {
 	unsigned long random_factor = 0UL;
 
-#ifdef CONFIG_PAX_RANDMMAP
-	if (!(mm->pax_flags & MF_PAX_RANDMMAP))
-#endif
-
 	/* 8 bits of randomness in 20 address space bits */
 	if ((current->flags & PF_RANDOMIZE) &&
 	    !(current->personality & ADDR_NO_RANDOMIZE))
@@ -190,21 +180,9 @@ void arch_pick_mmap_layout(struct mm_struct *mm)
 
 	if (mmap_is_legacy()) {
 		mm->mmap_base = TASK_UNMAPPED_BASE + random_factor;
-
-#ifdef CONFIG_PAX_RANDMMAP
-		if (mm->pax_flags & MF_PAX_RANDMMAP)
-			mm->mmap_base += mm->delta_mmap;
-#endif
-
 		mm->get_unmapped_area = arch_get_unmapped_area;
 	} else {
 		mm->mmap_base = mmap_base(random_factor);
-
-#ifdef CONFIG_PAX_RANDMMAP
-		if (mm->pax_flags & MF_PAX_RANDMMAP)
-			mm->mmap_base -= mm->delta_mmap + mm->delta_stack;
-#endif
-
 		mm->get_unmapped_area = arch_get_unmapped_area_topdown;
 	}
 }

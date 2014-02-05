@@ -8,7 +8,6 @@
 #include <linux/linkage.h>
 #include <asm/dwarf2.h>
 #include <asm/calling.h>
-#include <asm/alternative-asm.h>
 
 	/* rdi:	arg1 ... normal C conventions. rax is saved/restored. */
 	.macro THUNK name, func, put_ret_addr_in_rdi=0
@@ -16,11 +15,11 @@
 \name:
 	CFI_STARTPROC
 
-	/* this one pushes 15+1 elems, the next one would be %rIP */
-	SAVE_ARGS 8
+	/* this one pushes 9 elems, the next one would be %rIP */
+	SAVE_ARGS
 
 	.if \put_ret_addr_in_rdi
-	movq_cfi_restore RIP, rdi
+	movq_cfi_restore 9*8, rdi
 	.endif
 
 	call \func
@@ -39,9 +38,8 @@
 
 	/* SAVE_ARGS below is used only for the .cfi directives it contains. */
 	CFI_STARTPROC
-	SAVE_ARGS 8
+	SAVE_ARGS
 restore:
-	RESTORE_ARGS 1,8
-	pax_force_retaddr
+	RESTORE_ARGS
 	ret
 	CFI_ENDPROC

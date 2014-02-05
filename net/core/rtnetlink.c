@@ -58,7 +58,7 @@ struct rtnl_link {
 	rtnl_doit_func		doit;
 	rtnl_dumpit_func	dumpit;
 	rtnl_calcit_func 	calcit;
-} __no_const;
+};
 
 static DEFINE_MUTEX(rtnl_mutex);
 
@@ -299,13 +299,10 @@ int __rtnl_link_register(struct rtnl_link_ops *ops)
 	if (rtnl_link_ops_get(ops->kind))
 		return -EEXIST;
 
-	if (!ops->dellink) {
-		pax_open_kernel();
-		*(void **)&ops->dellink = unregister_netdevice_queue;
-		pax_close_kernel();
-	}
+	if (!ops->dellink)
+		ops->dellink = unregister_netdevice_queue;
 
-	pax_list_add_tail((struct list_head *)&ops->list, &link_ops);
+	list_add_tail(&ops->list, &link_ops);
 	return 0;
 }
 EXPORT_SYMBOL_GPL(__rtnl_link_register);
@@ -352,7 +349,7 @@ void __rtnl_link_unregister(struct rtnl_link_ops *ops)
 	for_each_net(net) {
 		__rtnl_kill_links(net, ops);
 	}
-	pax_list_del((struct list_head *)&ops->list);
+	list_del(&ops->list);
 }
 EXPORT_SYMBOL_GPL(__rtnl_link_unregister);
 

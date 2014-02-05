@@ -1282,7 +1282,7 @@ static inline size_t ntfs_copy_from_user(struct page **pages,
 	char *addr;
 	size_t total = 0;
 	unsigned len;
-	unsigned left;
+	int left;
 
 	do {
 		len = PAGE_CACHE_SIZE - ofs;

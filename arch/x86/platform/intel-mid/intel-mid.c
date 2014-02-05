@@ -65,10 +65,9 @@ static void intel_mid_power_off(void)
 {
 }
 
-static void __noreturn intel_mid_reboot(void)
+static void intel_mid_reboot(void)
 {
 	intel_scu_ipc_simple_command(IPCMSG_COLD_BOOT, 0);
-	BUG();
 }
 
 static unsigned long __init intel_mid_calibrate_tsc(void)

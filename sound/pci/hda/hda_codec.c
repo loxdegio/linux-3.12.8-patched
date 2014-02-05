@@ -976,10 +976,14 @@ find_codec_preset(struct hda_codec *codec)
 	mutex_unlock(&preset_mutex);
 
 	if (mod_requested < HDA_MODREQ_MAX_COUNT) {
+		char name[32];
 		if (!mod_requested)
-			request_module("snd-hda-codec-id:%08x", codec->vendor_id);
+			snprintf(name, sizeof(name), "snd-hda-codec-id:%08x",
+				 codec->vendor_id);
 		else
-			request_module("snd-hda-codec-id:%04x*", (codec->vendor_id >> 16) & 0xffff);
+			snprintf(name, sizeof(name), "snd-hda-codec-id:%04x*",
+				 (codec->vendor_id >> 16) & 0xffff);
+		request_module(name);
 		mod_requested++;
 		goto again;
 	}
@@ -2664,7 +2668,7 @@ static int get_kctl_0dB_offset(struct snd_kcontrol *kctl, int *step_to_check)
 		/* FIXME: set_fs() hack for obtaining user-space TLV data */
 		mm_segment_t fs = get_fs();
 		set_fs(get_ds());
-		if (!kctl->tlv.c(kctl, 0, sizeof(_tlv), (unsigned int __force_user *)_tlv))
+		if (!kctl->tlv.c(kctl, 0, sizeof(_tlv), _tlv))
 			tlv = _tlv;
 		set_fs(fs);
 	} else if (kctl->vd[0].access & SNDRV_CTL_ELEM_ACCESS_TLV_READ)

@@ -690,18 +690,7 @@ asmlinkage void do_ov(struct pt_regs *regs)
 	siginfo_t info;
 
 	prev_state = exception_enter();
-	if (unlikely(!user_mode(regs))) {
-
-#ifdef CONFIG_PAX_REFCOUNT
-		if (fixup_exception(regs)) {
-			pax_report_refcount_overflow(regs);
-			exception_exit(prev_state);
-			return;
-		}
-#endif
-
-		die("Integer overflow", regs);
-	}
+	die_if_kernel("Integer overflow", regs);
 
 	info.si_code = FPE_INTOVF;
 	info.si_signo = SIGFPE;

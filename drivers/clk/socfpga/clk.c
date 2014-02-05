@@ -22,7 +22,6 @@
 #include <linux/clk-provider.h>
 #include <linux/io.h>
 #include <linux/of.h>
-#include <asm/pgtable.h>
 
 /* Clock Manager offsets */
 #define CLKMGR_CTRL	0x0
@@ -153,10 +152,8 @@ static __init struct clk *socfpga_clk_init(struct device_node *node,
 		streq(clk_name, "periph_pll") ||
 		streq(clk_name, "sdram_pll")) {
 		socfpga_clk->hw.bit_idx = SOCFPGA_PLL_EXT_ENA;
-		pax_open_kernel();
-		*(void **)&clk_pll_ops.enable = clk_gate_ops.enable;
-		*(void **)&clk_pll_ops.disable = clk_gate_ops.disable;
-		pax_close_kernel();
+		clk_pll_ops.enable = clk_gate_ops.enable;
+		clk_pll_ops.disable = clk_gate_ops.disable;
 	}
 
 	clk = clk_register(NULL, &socfpga_clk->hw.hw);
@@ -247,7 +244,7 @@ static unsigned long socfpga_clk_recalc_rate(struct clk_hw *hwclk,
 	return parent_rate / div;
 }
 
-static clk_ops_no_const gateclk_ops __read_only = {
+static struct clk_ops gateclk_ops = {
 	.recalc_rate = socfpga_clk_recalc_rate,
 	.get_parent = socfpga_clk_get_parent,
 	.set_parent = socfpga_clk_set_parent,

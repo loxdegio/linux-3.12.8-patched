@@ -1504,9 +1504,7 @@ static int mmci_probe(struct amba_device *dev,
 	}
 
 	if (variant->busy_detect) {
-		pax_open_kernel();
-		*(void **)&mmci_ops.card_busy = mmci_card_busy;
-		pax_close_kernel();
+		mmci_ops.card_busy = mmci_card_busy;
 		mmci_write_datactrlreg(host, MCI_ST_DPSM_BUSYMODE);
 	}
 

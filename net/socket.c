@@ -1759,8 +1759,6 @@ SYSCALL_DEFINE3(getpeername, int, fd, struct sockaddr __user *, usockaddr,
  *	the protocol.
  */
 
-asmlinkage long sys_sendto(int, void __user *, size_t, unsigned, struct sockaddr __user *, int);
-
 SYSCALL_DEFINE6(sendto, int, fd, void __user *, buff, size_t, len,
 		unsigned int, flags, struct sockaddr __user *, addr,
 		int, addr_len)
@@ -2049,7 +2047,7 @@ static int ___sys_sendmsg(struct socket *sock, struct msghdr __user *msg,
 		 * checking falls down on this.
 		 */
 		if (copy_from_user(ctl_buf,
-				   (void __force_user *)msg_sys->msg_control,
+				   (void __user __force *)msg_sys->msg_control,
 				   ctl_len))
 			goto out_freectl;
 		msg_sys->msg_control = ctl_buf;
@@ -2229,7 +2227,7 @@ static int ___sys_recvmsg(struct socket *sock, struct msghdr __user *msg,
 	/* Save the user-mode address (verify_iovec will change the
 	 * kernel msghdr to use the kernel address space)
 	 */
-	uaddr = (void __force_user *)msg_sys->msg_name;
+	uaddr = (__force void __user *)msg_sys->msg_name;
 	uaddr_len = COMPAT_NAMELEN(msg);
 	if (MSG_CMSG_COMPAT & flags)
 		err = verify_compat_iovec(msg_sys, iov, &addr, VERIFY_WRITE);
@@ -2873,7 +2871,7 @@ static int ethtool_ioctl(struct net *net, struct compat_ifreq __user *ifr32)
 	ifr = compat_alloc_user_space(buf_size);
 	rxnfc = (void __user *)ifr + ALIGN(sizeof(struct ifreq), 8);
 
-	if (copy_in_user(ifr->ifr_name, ifr32->ifr_name, IFNAMSIZ))
+	if (copy_in_user(&ifr->ifr_name, &ifr32->ifr_name, IFNAMSIZ))
 		return -EFAULT;
 
 	if (put_user(convert_in ? rxnfc : compat_ptr(data),
@@ -2987,14 +2985,14 @@ static int bond_ioctl(struct net *net, unsigned int cmd,
 		old_fs = get_fs();
 		set_fs(KERNEL_DS);
 		err = dev_ioctl(net, cmd,
-				(struct ifreq __force_user *) &kifr);
+				(struct ifreq __user __force *) &kifr);
 		set_fs(old_fs);
 
 		return err;
 	case SIOCBONDSLAVEINFOQUERY:
 	case SIOCBONDINFOQUERY:
 		uifr = compat_alloc_user_space(sizeof(*uifr));
-		if (copy_in_user(uifr->ifr_name, ifr32->ifr_name, IFNAMSIZ))
+		if (copy_in_user(&uifr->ifr_name, &ifr32->ifr_name, IFNAMSIZ))
 			return -EFAULT;
 
 		if (get_user(data, &ifr32->ifr_ifru.ifru_data))
@@ -3096,7 +3094,7 @@ static int compat_sioc_ifmap(struct net *net, unsigned int cmd,
 
 	old_fs = get_fs();
 	set_fs(KERNEL_DS);
-	err = dev_ioctl(net, cmd, (void  __force_user *)&ifr);
+	err = dev_ioctl(net, cmd, (void  __user __force *)&ifr);
 	set_fs(old_fs);
 
 	if (cmd == SIOCGIFMAP && !err) {
@@ -3201,7 +3199,7 @@ static int routing_ioctl(struct net *net, struct socket *sock,
 		ret |= get_user(rtdev, &(ur4->rt_dev));
 		if (rtdev) {
 			ret |= copy_from_user(devname, compat_ptr(rtdev), 15);
-			r4.rt_dev = (char __force_user *)devname;
+			r4.rt_dev = (char __user __force *)devname;
 			devname[15] = 0;
 		} else
 			r4.rt_dev = NULL;
@@ -3427,8 +3425,8 @@ int kernel_getsockopt(struct socket *sock, int level, int optname,
 	int __user *uoptlen;
 	int err;
 
-	uoptval = (char __force_user *) optval;
-	uoptlen = (int __force_user *) optlen;
+	uoptval = (char __user __force *) optval;
+	uoptlen = (int __user __force *) optlen;
 
 	set_fs(KERNEL_DS);
 	if (level == SOL_SOCKET)
@@ -3448,7 +3446,7 @@ int kernel_setsockopt(struct socket *sock, int level, int optname,
 	char __user *uoptval;
 	int err;
 
-	uoptval = (char __force_user *) optval;
+	uoptval = (char __user __force *) optval;
 
 	set_fs(KERNEL_DS);
 	if (level == SOL_SOCKET)

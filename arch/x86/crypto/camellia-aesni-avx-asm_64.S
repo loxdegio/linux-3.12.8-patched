@@ -16,7 +16,6 @@
  */
 
 #include <linux/linkage.h>
-#include <asm/alternative-asm.h>
 
 #define CAMELLIA_TABLE_BYTE_LEN 272
 
@@ -192,7 +191,6 @@ roundsm16_x0_x1_x2_x3_x4_x5_x6_x7_y0_y1_y2_y3_y4_y5_y6_y7_cd:
 	roundsm16(%xmm0, %xmm1, %xmm2, %xmm3, %xmm4, %xmm5, %xmm6, %xmm7,
 		  %xmm8, %xmm9, %xmm10, %xmm11, %xmm12, %xmm13, %xmm14, %xmm15,
 		  %rcx, (%r9));
-	pax_force_retaddr
 	ret;
 ENDPROC(roundsm16_x0_x1_x2_x3_x4_x5_x6_x7_y0_y1_y2_y3_y4_y5_y6_y7_cd)
 
@@ -201,7 +199,6 @@ roundsm16_x4_x5_x6_x7_x0_x1_x2_x3_y4_y5_y6_y7_y0_y1_y2_y3_ab:
 	roundsm16(%xmm4, %xmm5, %xmm6, %xmm7, %xmm0, %xmm1, %xmm2, %xmm3,
 		  %xmm12, %xmm13, %xmm14, %xmm15, %xmm8, %xmm9, %xmm10, %xmm11,
 		  %rax, (%r9));
-	pax_force_retaddr
 	ret;
 ENDPROC(roundsm16_x4_x5_x6_x7_x0_x1_x2_x3_y4_y5_y6_y7_y0_y1_y2_y3_ab)
 
@@ -783,7 +780,6 @@ __camellia_enc_blk16:
 		    %xmm8, %xmm9, %xmm10, %xmm11, %xmm12, %xmm13, %xmm14,
 		    %xmm15, (key_table)(CTX, %r8, 8), (%rax), 1 * 16(%rax));
 
-	pax_force_retaddr
 	ret;
 
 .align 8
@@ -869,7 +865,6 @@ __camellia_dec_blk16:
 		    %xmm8, %xmm9, %xmm10, %xmm11, %xmm12, %xmm13, %xmm14,
 		    %xmm15, (key_table)(CTX), (%rax), 1 * 16(%rax));
 
-	pax_force_retaddr
 	ret;
 
 .align 8
@@ -909,7 +904,6 @@ ENTRY(camellia_ecb_enc_16way)
 		     %xmm15, %xmm14, %xmm13, %xmm12, %xmm11, %xmm10, %xmm9,
 		     %xmm8, %rsi);
 
-	pax_force_retaddr
 	ret;
 ENDPROC(camellia_ecb_enc_16way)
 
@@ -938,7 +932,6 @@ ENTRY(camellia_ecb_dec_16way)
 		     %xmm15, %xmm14, %xmm13, %xmm12, %xmm11, %xmm10, %xmm9,
 		     %xmm8, %rsi);
 
-	pax_force_retaddr
 	ret;
 ENDPROC(camellia_ecb_dec_16way)
 
@@ -988,7 +981,6 @@ ENTRY(camellia_cbc_dec_16way)
 		     %xmm15, %xmm14, %xmm13, %xmm12, %xmm11, %xmm10, %xmm9,
 		     %xmm8, %rsi);
 
-	pax_force_retaddr
 	ret;
 ENDPROC(camellia_cbc_dec_16way)
 
@@ -1100,7 +1092,6 @@ ENTRY(camellia_ctr_16way)
 		     %xmm15, %xmm14, %xmm13, %xmm12, %xmm11, %xmm10, %xmm9,
 		     %xmm8, %rsi);
 
-	pax_force_retaddr
 	ret;
 ENDPROC(camellia_ctr_16way)
 
@@ -1243,7 +1234,6 @@ camellia_xts_crypt_16way:
 		     %xmm15, %xmm14, %xmm13, %xmm12, %xmm11, %xmm10, %xmm9,
 		     %xmm8, %rsi);
 
-	pax_force_retaddr
 	ret;
 ENDPROC(camellia_xts_crypt_16way)
 

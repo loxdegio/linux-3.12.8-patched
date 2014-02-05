@@ -505,7 +505,7 @@ static void drm_sysfs_release(struct device *dev)
  */
 int drm_sysfs_device_add(struct drm_minor *minor)
 {
-	const char *minor_str;
+	char *minor_str;
 	int r;
 
 	if (minor->type == DRM_MINOR_CONTROL)

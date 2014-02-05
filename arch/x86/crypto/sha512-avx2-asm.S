@@ -51,7 +51,6 @@
 
 #ifdef CONFIG_AS_AVX2
 #include <linux/linkage.h>
-#include <asm/alternative-asm.h>
 
 .text
 
@@ -679,7 +678,6 @@ done_hash:
 
 	# Restore Stack Pointer
 	mov	frame_RSPSAVE(%rsp), %rsp
-	pax_force_retaddr
 	ret
 ENDPROC(sha512_transform_rorx)
 

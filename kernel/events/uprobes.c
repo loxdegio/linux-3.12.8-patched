@@ -1640,7 +1640,7 @@ static int is_trap_at_addr(struct mm_struct *mm, unsigned long vaddr)
 {
 	struct page *page;
 	uprobe_opcode_t opcode;
-	long result;
+	int result;
 
 	pagefault_disable();
 	result = __copy_from_user_inatomic(&opcode, (void __user*)vaddr,

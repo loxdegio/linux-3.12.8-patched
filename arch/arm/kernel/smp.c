@@ -73,7 +73,7 @@ enum ipi_msg_type {
 
 static DECLARE_COMPLETION(cpu_running);
 
-static struct smp_operations smp_ops __read_only;
+static struct smp_operations smp_ops;
 
 void __init smp_set_ops(struct smp_operations *ops)
 {

@@ -365,7 +365,7 @@ int yama_ptrace_traceme(struct task_struct *parent)
 }
 
 #ifndef CONFIG_SECURITY_YAMA_STACKED
-static struct security_operations yama_ops __read_only = {
+static struct security_operations yama_ops = {
 	.name =			"yama",
 
 	.ptrace_access_check =	yama_ptrace_access_check,
@@ -376,23 +376,27 @@ static struct security_operations yama_ops __read_only = {
 #endif
 
 #ifdef CONFIG_SYSCTL
-static int zero __read_only;
-static int max_scope __read_only = YAMA_SCOPE_NO_ATTACH;
-
 static int yama_dointvec_minmax(struct ctl_table *table, int write,
 				void __user *buffer, size_t *lenp, loff_t *ppos)
 {
-	ctl_table_no_const yama_table;
+	int rc;
 
 	if (write && !capable(CAP_SYS_PTRACE))
 		return -EPERM;
 
-	yama_table = *table;
+	rc = proc_dointvec_minmax(table, write, buffer, lenp, ppos);
+	if (rc)
+		return rc;
+
 	/* Lock the max value if it ever gets set. */
-	if (ptrace_scope == max_scope)
-		yama_table.extra1 = &max_scope;
-	return proc_dointvec_minmax(&yama_table, write, buffer, lenp, ppos);
+	if (write && *(int *)table->data == *(int *)table->extra2)
+		table->extra1 = table->extra2;
+
+	return rc;
 }
+
+static int zero;
+static int max_scope = YAMA_SCOPE_NO_ATTACH;
 
 struct ctl_path yama_sysctl_path[] = {
 	{ .procname = "kernel", },
