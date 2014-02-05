@@ -360,7 +360,7 @@ CHECK		= sparse
 CHECKFLAGS     := -D__linux__ -Dlinux -D__STDC__ -Dunix -D__unix__ \
 		  -Wbitwise -Wno-return-void $(CF)
 KMSG_CHECK	= $(srctree)/scripts/kmsg-doc
-OFLAGS		= -O2 -march=native -mtune=native
+OFLAGS 			= -O2 -march=native -mtune=native
 
 CFLAGS_MODULE   = $(OFLAGS)
 AFLAGS_MODULE   = $(OFLAGS)
