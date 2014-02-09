@@ -312,9 +312,6 @@ struct vm_area_struct {
 #ifdef CONFIG_UKSM
 	struct vma_slot *uksm_vma_slot;
 #endif
-#ifdef CONFIG_UKSM
-	struct vma_slot *uksm_vma_slot;
-#endif
 };
 
 struct core_thread {
