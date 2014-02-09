@@ -1508,6 +1508,42 @@ static struct dmi_system_id __initdata acpi_dmi_table_late[] = {
 		     DMI_MATCH(DMI_PRODUCT_NAME, "AMILO PRO V2030"),
 		     },
 	 },
+	/* ThinkPad Edge 11 (AMD) */
+	{
+	 .callback = dmi_ignore_irq0_timer_override,
+	 .ident = "ThinkPad Edge",
+	 .matches = {
+		     DMI_MATCH(DMI_SYS_VENDOR, "LENOVO"),
+		     DMI_MATCH(DMI_PRODUCT_NAME, "254523U"),
+		    },
+	},
+	/* ThinkPad Edge 13 (AMD) */
+	{
+	 .callback = dmi_ignore_irq0_timer_override,
+	 .ident = "ThinkPad Edge",
+	 .matches = {
+		     DMI_MATCH(DMI_SYS_VENDOR, "LENOVO"),
+		     DMI_MATCH(DMI_PRODUCT_NAME, "022120U"),
+		    },
+	},
+	/* ThinkPad Edge 14 (AMD) */
+	{
+	 .callback = dmi_ignore_irq0_timer_override,
+	 .ident = "ThinkPad Edge",
+	 .matches = {
+		     DMI_MATCH(DMI_SYS_VENDOR, "LENOVO"),
+		     DMI_MATCH(DMI_PRODUCT_NAME, "019923U"),
+		    },
+	},
+	/* ThinkPad Edge 15 (AMD) */
+	{
+	 .callback = dmi_ignore_irq0_timer_override,
+	 .ident = "ThinkPad Edge",
+	 .matches = {
+		     DMI_MATCH(DMI_SYS_VENDOR, "LENOVO"),
+		     DMI_MATCH(DMI_PRODUCT_NAME, "030222U"),
+		    },
+	},
 	{}
 };
 #endif

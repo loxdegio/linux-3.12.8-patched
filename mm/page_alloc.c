@@ -6456,6 +6456,7 @@ static const struct trace_print_flags pageflag_names[] = {
 /*	{1UL << PG_netback,		"netback"	}, */
 	{1UL << PG_blkback,		"blkback"	},
 #endif
+	{1UL << PG_readaheadunused,	"readaheadunused"},
 };
 
 static void dump_page_flags(unsigned long flags)

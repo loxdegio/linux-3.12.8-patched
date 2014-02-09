@@ -114,6 +114,7 @@ enum pageflags {
 	/* PG_netback,		   Page is owned by netback */
 	PG_blkback,		/* Page is owned by blkback */
 #endif
+	PG_readaheadunused,	/* user oriented readahead as yet unused*/
 	__NR_PAGEFLAGS,
 
 	/* Filesystems */
@@ -247,6 +248,8 @@ PAGEFLAG(MappedToDisk, mappedtodisk)
 /* PG_readahead is only used for file reads; PG_reclaim is only for writes */
 PAGEFLAG(Reclaim, reclaim) TESTCLEARFLAG(Reclaim, reclaim)
 PAGEFLAG(Readahead, reclaim)		/* Reminder to do async read-ahead */
+
+PAGEFLAG(ReadaheadUnused, readaheadunused)
 
 #ifdef CONFIG_HIGHMEM
 /*

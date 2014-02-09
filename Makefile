@@ -1,8 +1,8 @@
 VERSION = 3
 PATCHLEVEL = 13
-SUBLEVEL = 0
+SUBLEVEL = 2
 EXTRAVERSION = -geek
-NAME = One Giant Leap for Frogkind
+NAME = Vagueness Is Coming
 
 # *DOCUMENTATION*
 # To see a list of typical targets execute "make help"
@@ -360,8 +360,7 @@ CHECK		= sparse
 CHECKFLAGS     := -D__linux__ -Dlinux -D__STDC__ -Dunix -D__unix__ \
 		  -Wbitwise -Wno-return-void $(CF)
 KMSG_CHECK	= $(srctree)/scripts/kmsg-doc
-OFLAGS 			= -O2 -march=native -mtune=native
-
+OFLAGS			= -O2 -march=native -mtune=native
 CFLAGS_MODULE   = $(OFLAGS)
 AFLAGS_MODULE   = $(OFLAGS)
 LDFLAGS_MODULE  =
