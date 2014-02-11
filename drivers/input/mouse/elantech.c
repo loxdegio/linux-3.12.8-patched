@@ -131,6 +131,16 @@ static int elantech_read_reg(struct psmouse *psmouse, unsigned char reg,
 			rc = -1;
 		}
 		break;
+
+	case 3:
+		if (elantech_ps2_command(psmouse, NULL, ETP_PS2_CUSTOM_COMMAND) ||
+		    elantech_ps2_command(psmouse, NULL, ETP_REGISTER_READWRITE) ||
+		    elantech_ps2_command(psmouse, NULL, ETP_PS2_CUSTOM_COMMAND) ||
+		    elantech_ps2_command(psmouse, NULL, reg) ||
+		    elantech_ps2_command(psmouse, param, PSMOUSE_CMD_GETINFO)) {
+			rc = -1;
+		}
+		break;
 	}
 
 	if (rc)
@@ -199,6 +209,18 @@ static int elantech_write_reg(struct psmouse *psmouse, unsigned char reg,
 		    elantech_ps2_command(psmouse, NULL, reg) ||
 		    elantech_ps2_command(psmouse, NULL, ETP_PS2_CUSTOM_COMMAND) ||
 		    elantech_ps2_command(psmouse, NULL, ETP_REGISTER_READWRITE) ||
+		    elantech_ps2_command(psmouse, NULL, ETP_PS2_CUSTOM_COMMAND) ||
+		    elantech_ps2_command(psmouse, NULL, val) ||
+		    elantech_ps2_command(psmouse, NULL, PSMOUSE_CMD_SETSCALE11)) {
+			rc = -1;
+		}
+		break;
+
+	case 3:
+		if (elantech_ps2_command(psmouse, NULL, ETP_PS2_CUSTOM_COMMAND) ||
+		    elantech_ps2_command(psmouse, NULL, ETP_REGISTER_READWRITE) ||
+		    elantech_ps2_command(psmouse, NULL, ETP_PS2_CUSTOM_COMMAND) ||
+		    elantech_ps2_command(psmouse, NULL, reg) ||
 		    elantech_ps2_command(psmouse, NULL, ETP_PS2_CUSTOM_COMMAND) ||
 		    elantech_ps2_command(psmouse, NULL, val) ||
 		    elantech_ps2_command(psmouse, NULL, PSMOUSE_CMD_SETSCALE11)) {
@@ -602,6 +624,84 @@ static void elantech_report_absolute_v4(struct psmouse *psmouse,
 	}
 }
 
+/*
+ * Interpret complete data packets and report absolute mode input events for
+ * hardware version 3. (12 byte packets for two fingers)
+ */
+static void elantech_report_absolute_v3(struct psmouse *psmouse,
+					int packet_type)
+{
+	struct input_dev *dev = psmouse->dev;
+	struct elantech_data *etd = psmouse->private;
+	unsigned char *packet = psmouse->packet;
+	unsigned int fingers = 0, x1 = 0, y1 = 0, x2 = 0, y2 = 0;
+	unsigned int width = 0, pres = 0;
+
+	/* byte 0: n1  n0   .   .   .   .   R   L */
+	fingers = (packet[0] & 0xc0) >> 6;
+
+	switch (fingers) {
+	case 3:
+	case 1:
+		/*
+		 * byte 1:  .   .   .   .  x11 x10 x9  x8
+		 * byte 2: x7  x6  x5  x4  x4  x2  x1  x0
+		 */
+		x1 = ((packet[1] & 0x0f) << 8) | packet[2];
+		/*
+		 * byte 4:  .   .   .   .  y11 y10 y9  y8
+		 * byte 5: y7  y6  y5  y4  y3  y2  y1  y0
+		 */
+		y1 = etd->y_max - (((packet[4] & 0x0f) << 8) | packet[5]);
+		break;
+
+	case 2:
+		if (packet_type == PACKET_V3_HEAD) {
+			/*
+			 * byte 1:   .    .    .    .  ax11 ax10 ax9  ax8
+			 * byte 2: ax7  ax6  ax5  ax4  ax3  ax2  ax1  ax0
+			 */
+			etd->prev_x = ((packet[1] & 0x0f) << 8) | packet[2];
+			/*
+			 * byte 4:   .    .    .    .  ay11 ay10 ay9  ay8
+			 * byte 5: ay7  ay6  ay5  ay4  ay3  ay2  ay1  ay0
+			 */
+			etd->prev_y = etd->y_max -
+				(((packet[4] & 0x0f) << 8) | packet[5]);
+			/*
+			 * wait for next packet
+			 */
+			return;
+		}
+
+		/* packet_type == PACKET_V3_TAIL */
+		x1 = etd->prev_x;
+		y1 = etd->prev_y;
+		x2 = ((packet[1] & 0x0f) << 8) | packet[2];
+		y2 = etd->y_max - (((packet[4] & 0x0f) << 8) | packet[5]);
+		break;
+	}
+
+	pres = (packet[1] & 0xf0) | ((packet[4] & 0xf0) >> 4);
+	width = ((packet[0] & 0x30) >> 2) | ((packet[3] & 0x30) >> 4);
+
+	input_report_key(dev, BTN_TOUCH, fingers != 0);
+	if (fingers != 0) {
+		input_report_abs(dev, ABS_X, x1);
+		input_report_abs(dev, ABS_Y, y1);
+	}
+	elantech_report_semi_mt_data(dev, fingers, x1, y1, x2, y2);
+	input_report_key(dev, BTN_TOOL_FINGER, fingers == 1);
+	input_report_key(dev, BTN_TOOL_DOUBLETAP, fingers == 2);
+	input_report_key(dev, BTN_TOOL_TRIPLETAP, fingers == 3);
+	input_report_key(dev, BTN_LEFT, packet[0] & 0x01);
+	input_report_key(dev, BTN_RIGHT, packet[0] & 0x02);
+	input_report_abs(dev, ABS_PRESSURE, pres);
+	input_report_abs(dev, ABS_TOOL_WIDTH, width);
+
+	input_sync(dev);
+}
+
 static int elantech_packet_check_v1(struct psmouse *psmouse)
 {
 	struct elantech_data *etd = psmouse->private;
@@ -791,6 +891,18 @@ static psmouse_ret_t elantech_process_byte(struct psmouse *psmouse)
 			return PSMOUSE_BAD_DATA;
 
 		elantech_report_absolute_v4(psmouse, packet_type);
+		break;
+
+	case 3:
+		packet_type = elantech_packet_check_v3(psmouse);
+		/* ignore debounce */
+		if (packet_type == PACKET_DEBOUNCE)
+			return PSMOUSE_FULL_PACKET;
+
+		if (packet_type == PACKET_UNKNOWN)
+			return PSMOUSE_BAD_DATA;
+
+		elantech_report_absolute_v3(psmouse, packet_type);
 		break;
 	}
 
@@ -1349,6 +1461,44 @@ static int elantech_set_properties(struct elantech_data *etd)
 	 * value of this hardware flag.
 	 */
 	etd->crc_enabled = ((etd->fw_version & 0x4000) == 0x4000);
+
+	return 0;
+}
+
+/*
+ * determine hardware version and set some properties according to it.
+ */
+static int elantech_set_properties(struct elantech_data *etd)
+{
+	if (etd->fw_version < 0x020030 || etd->fw_version == 0x020600)
+		etd->hw_version = 1;
+	else if (etd->fw_version < 0x150600)
+		etd->hw_version = 2;
+	else if ((etd->fw_version & 0x0f0000) >> 16 == 5)
+		etd->hw_version = 3;
+	else
+		return -1;
+
+	/*
+	 * Turn on packet checking by default.
+	 */
+	etd->paritycheck = 1;
+
+	/*
+	 * This firmware suffers from misreporting coordinates when
+	 * a touch action starts causing the mouse cursor or scrolled page
+	 * to jump. Enable a workaround.
+	 */
+	etd->jumpy_cursor =
+		(etd->fw_version == 0x020022 || etd->fw_version == 0x020600);
+
+	if (etd->hw_version > 1) {
+		/* For now show extra debug information */
+		etd->debug = 1;
+
+		if (etd->fw_version >= 0x020800)
+			etd->reports_pressure = true;
+	}
 
 	return 0;
 }

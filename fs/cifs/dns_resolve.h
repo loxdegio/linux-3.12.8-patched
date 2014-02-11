@@ -23,6 +23,8 @@
 #ifndef _DNS_RESOLVE_H
 #define _DNS_RESOLVE_H
 
+#include <linux/module.h>
+
 #ifdef __KERNEL__
 extern int dns_resolve_server_name_to_ip(const char *unc, char **ip_addr);
 #endif /* KERNEL */

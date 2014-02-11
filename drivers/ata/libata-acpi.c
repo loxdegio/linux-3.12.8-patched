@@ -211,6 +211,9 @@ void ata_acpi_bind_dev(struct ata_device *dev)
 			(!(ap->flags & ATA_FLAG_ACPI_SATA) && !port_handle))
 		return;
 
+	if (dev->flags & ATA_DFLAG_ACPI_DISABLED)
+		return NULL;
+
 	if (ap->flags & ATA_FLAG_ACPI_SATA) {
 		if (!sata_pmp_attached(ap))
 			adr = SATA_ADR(ap->port_no, NO_PORT_MULT);

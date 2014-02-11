@@ -38,6 +38,7 @@
 
 #include <linux/types.h>
 #include <linux/lzo.h>
+#include <linux/decompress/unlzo_mm.h>
 #include <linux/decompress/mm.h>
 
 #include <linux/compiler.h>
@@ -108,7 +109,7 @@ STATIC inline int INIT parse_header(u8 *input, int *skip, int in_len)
 	return 1;
 }
 
-STATIC inline int INIT unlzo(u8 *input, int in_len,
+STATIC int INIT unlzo(u8 *input, int in_len,
 				int (*fill) (void *, unsigned int),
 				int (*flush) (void *, unsigned int),
 				u8 *output, int *posp,

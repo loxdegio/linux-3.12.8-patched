@@ -322,16 +322,14 @@ void set_video(void)
 	save_screen();
 	probe_cards(0);
 
-	for (;;) {
-		if (mode == ASK_VGA)
-			mode = mode_menu();
+	if (mode == ASK_VGA)
+		mode = mode_menu();
 
-		if (!set_mode(mode))
-			break;
-
+	if (set_mode(mode)) {
 		printf("Undefined video mode number: %x\n", mode);
-		mode = ASK_VGA;
+		mode = VIDEO_CURRENT_MODE;
 	}
+
 	boot_params.hdr.vid_mode = mode;
 	vesa_store_edid();
 	store_mode_params();
