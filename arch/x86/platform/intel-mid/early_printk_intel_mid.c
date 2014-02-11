@@ -119,7 +119,7 @@ static void dw_kmsg_dump(struct kmsg_dumper *dumper,
 	mrst_early_console_init();
 
 	while (kmsg_dump_get_line(dumper, true, line, sizeof(line), &len))
-		early_mrst_console.write(&early_mrst_console, line, len);
+		early_mrst_console.write(&early_mrst_console, line, len, 0);
 }
 
 /* Set the ratio rate to 115200, 8n1, IRQ disabled */
