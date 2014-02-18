@@ -134,8 +134,6 @@ struct elantech_data {
 	unsigned int fw_version;
 	unsigned int single_finger_reports;
 	unsigned int y_max;
-	unsigned int prev_x;
-	unsigned int prev_y;
 	unsigned int width;
 	struct finger_pos mt[ETP_MAX_FINGERS];
 	unsigned char parity[256];

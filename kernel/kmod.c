@@ -575,8 +575,7 @@ int call_usermodehelper_exec(struct subprocess_info *sub_info, int wait)
 		call_usermodehelper_freeinfo(sub_info);
 		return -EINVAL;
 	}
-	if (!(current->flags & PF_FREEZER_SKIP))
-		helper_lock();
+	helper_lock();
 	if (!khelper_wq || usermodehelper_disabled) {
 		retval = -EBUSY;
 		goto out;
@@ -616,8 +615,7 @@ wait_done:
 out:
 	call_usermodehelper_freeinfo(sub_info);
 unlock:
-	if (!(current->flags & PF_FREEZER_SKIP))
-		helper_unlock();
+	helper_unlock();
 	return retval;
 }
 EXPORT_SYMBOL(call_usermodehelper_exec);
