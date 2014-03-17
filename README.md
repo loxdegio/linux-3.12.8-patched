@@ -27,4 +27,4 @@ If you have Arch Linux you might already know how to compile a kernel, but I giv
 EN: https://wiki.archlinux.org/index.php/Kernels/Compilation/Traditional
 IT: https://wiki.archlinux.org/index.php/Kernels/Compilation/Traditional_%28Italiano%29
 
-* If you have Gentoo you can download this kernel and apply your choice patches from init6 overlay or build this with my choice patches ;)
+* If you have Gentoo you can download this kernel and apply patches by yourself from init6 overlay or build this with my choice patches ;)
