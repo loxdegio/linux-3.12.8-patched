@@ -958,6 +958,26 @@ static struct ctl_table kern_table[] = {
 		.proc_handler	= proc_dointvec,
 	},
 #endif
+#ifdef CONFIG_SCHED_BFS
+	{
+		.procname	= "rr_interval",
+		.data		= &rr_interval,
+		.maxlen		= sizeof (int),
+		.mode		= 0644,
+		.proc_handler	= &proc_dointvec_minmax,
+		.extra1		= &one,
+		.extra2		= &one_thousand,
+	},
+	{
+		.procname	= "iso_cpu",
+		.data		= &sched_iso_cpu,
+		.maxlen		= sizeof (int),
+		.mode		= 0644,
+		.proc_handler	= &proc_dointvec_minmax,
+		.extra1		= &zero,
+		.extra2		= &one_hundred,
+	},
+#endif
 	{
 		.procname	= "suid_dumpable",
 		.data		= &suid_dumpable,

@@ -1,6 +1,6 @@
 VERSION = 3
 PATCHLEVEL = 13
-SUBLEVEL = 3
+SUBLEVEL = 6
 EXTRAVERSION = -geek
 NAME = Vagueness Is Coming
 
@@ -360,13 +360,11 @@ CHECK		= sparse
 CHECKFLAGS     := -D__linux__ -Dlinux -D__STDC__ -Dunix -D__unix__ \
 		  -Wbitwise -Wno-return-void $(CF)
 KMSG_CHECK	= $(srctree)/scripts/kmsg-doc
-OFLAGS			= -O2 -march=native -mtune=native
-
-CFLAGS_MODULE   = $(OFLAGS)
-AFLAGS_MODULE   = $(OFLAGS)
+CFLAGS_MODULE   =
+AFLAGS_MODULE   =
 LDFLAGS_MODULE  =
-CFLAGS_KERNEL	= $(OFLAGS)
-AFLAGS_KERNEL	= $(OFLAGS)
+CFLAGS_KERNEL	=
+AFLAGS_KERNEL	=
 CFLAGS_GCOV	= -fprofile-arcs -ftest-coverage
 
 

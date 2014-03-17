@@ -1739,6 +1739,7 @@ int __cpufreq_driver_target(struct cpufreq_policy *policy,
 		}
 	}
 
+out:
 #ifdef CONFIG_SCHED_BFS
 	if (likely(retval != -EINVAL)) {
 		if (target_freq == policy->max)
@@ -1747,8 +1748,6 @@ int __cpufreq_driver_target(struct cpufreq_policy *policy,
 			cpu_scaling(policy->cpu);
 	}
 #endif
-
-out:
 	return retval;
 }
 EXPORT_SYMBOL_GPL(__cpufreq_driver_target);

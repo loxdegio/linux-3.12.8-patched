@@ -1426,31 +1426,41 @@ static struct dmi_system_id __initdata acpi_dmi_table[] = {
 		     DMI_MATCH(DMI_PRODUCT_NAME, "TravelMate 360"),
 		     },
 	 },
-
-	/*
-	 * Boxes that need RSDT as ACPI root table
-	 */
+	/* ThinkPad Edge 11 (AMD) */
 	{
-	    .callback = force_acpi_rsdt,
-	    .ident = "ThinkPad ", /* R40e, broken C-states */
-	    .matches = {
-		DMI_MATCH(DMI_BIOS_VENDOR, "IBM"),
-		DMI_MATCH(DMI_BIOS_VERSION, "1SET")},
+	 .callback = dmi_ignore_irq0_timer_override,
+	 .ident = "ThinkPad Edge",
+	 .matches = {
+		     DMI_MATCH(DMI_SYS_VENDOR, "LENOVO"),
+		     DMI_MATCH(DMI_PRODUCT_NAME, "254523U"),
+		    },
 	},
+	/* ThinkPad Edge 13 (AMD) */
 	{
-	    .callback = force_acpi_rsdt,
-	    .ident = "ThinkPad ", /* R50e, slow booting */
-	    .matches = {
-		DMI_MATCH(DMI_BIOS_VENDOR, "IBM"),
-		DMI_MATCH(DMI_BIOS_VERSION, "1WET")},
+	 .callback = dmi_ignore_irq0_timer_override,
+	 .ident = "ThinkPad Edge",
+	 .matches = {
+		     DMI_MATCH(DMI_SYS_VENDOR, "LENOVO"),
+		     DMI_MATCH(DMI_PRODUCT_NAME, "022120U"),
+		    },
 	},
+	/* ThinkPad Edge 14 (AMD) */
 	{
-	    .callback = force_acpi_rsdt,
-	    .ident = "ThinkPad ", /* T40, T40p, T41, T41p, T42, T42p
-				     R50, R50p */
-	    .matches = {
-		DMI_MATCH(DMI_BIOS_VENDOR, "IBM"),
-		DMI_MATCH(DMI_BIOS_VERSION, "1RET")},
+	 .callback = dmi_ignore_irq0_timer_override,
+	 .ident = "ThinkPad Edge",
+	 .matches = {
+		     DMI_MATCH(DMI_SYS_VENDOR, "LENOVO"),
+		     DMI_MATCH(DMI_PRODUCT_NAME, "019923U"),
+		    },
+	},
+	/* ThinkPad Edge 15 (AMD) */
+	{
+	 .callback = dmi_ignore_irq0_timer_override,
+	 .ident = "ThinkPad Edge",
+	 .matches = {
+		     DMI_MATCH(DMI_SYS_VENDOR, "LENOVO"),
+		     DMI_MATCH(DMI_PRODUCT_NAME, "030222U"),
+		    },
 	},
 	{}
 };
@@ -1508,41 +1518,31 @@ static struct dmi_system_id __initdata acpi_dmi_table_late[] = {
 		     DMI_MATCH(DMI_PRODUCT_NAME, "AMILO PRO V2030"),
 		     },
 	 },
-	/* ThinkPad Edge 11 (AMD) */
+
+	/*
+	 * Boxes that need RSDT as ACPI root table
+	 */
 	{
-	 .callback = dmi_ignore_irq0_timer_override,
-	 .ident = "ThinkPad Edge",
-	 .matches = {
-		     DMI_MATCH(DMI_SYS_VENDOR, "LENOVO"),
-		     DMI_MATCH(DMI_PRODUCT_NAME, "254523U"),
-		    },
+	    .callback = force_acpi_rsdt,
+	    .ident = "ThinkPad ", /* R40e, broken C-states */
+	    .matches = {
+		DMI_MATCH(DMI_BIOS_VENDOR, "IBM"),
+		DMI_MATCH(DMI_BIOS_VERSION, "1SET")},
 	},
-	/* ThinkPad Edge 13 (AMD) */
 	{
-	 .callback = dmi_ignore_irq0_timer_override,
-	 .ident = "ThinkPad Edge",
-	 .matches = {
-		     DMI_MATCH(DMI_SYS_VENDOR, "LENOVO"),
-		     DMI_MATCH(DMI_PRODUCT_NAME, "022120U"),
-		    },
+	    .callback = force_acpi_rsdt,
+	    .ident = "ThinkPad ", /* R50e, slow booting */
+	    .matches = {
+		DMI_MATCH(DMI_BIOS_VENDOR, "IBM"),
+		DMI_MATCH(DMI_BIOS_VERSION, "1WET")},
 	},
-	/* ThinkPad Edge 14 (AMD) */
 	{
-	 .callback = dmi_ignore_irq0_timer_override,
-	 .ident = "ThinkPad Edge",
-	 .matches = {
-		     DMI_MATCH(DMI_SYS_VENDOR, "LENOVO"),
-		     DMI_MATCH(DMI_PRODUCT_NAME, "019923U"),
-		    },
-	},
-	/* ThinkPad Edge 15 (AMD) */
-	{
-	 .callback = dmi_ignore_irq0_timer_override,
-	 .ident = "ThinkPad Edge",
-	 .matches = {
-		     DMI_MATCH(DMI_SYS_VENDOR, "LENOVO"),
-		     DMI_MATCH(DMI_PRODUCT_NAME, "030222U"),
-		    },
+	    .callback = force_acpi_rsdt,
+	    .ident = "ThinkPad ", /* T40, T40p, T41, T41p, T42, T42p
+				     R50, R50p */
+	    .matches = {
+		DMI_MATCH(DMI_BIOS_VENDOR, "IBM"),
+		DMI_MATCH(DMI_BIOS_VERSION, "1RET")},
 	},
 	{}
 };

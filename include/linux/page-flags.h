@@ -109,11 +109,6 @@ enum pageflags {
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
 	PG_compound_lock,
 #endif
-#ifdef CONFIG_XEN
-	PG_foreign,		/* Page is owned by foreign allocator. */
-	/* PG_netback,		   Page is owned by netback */
-	PG_blkback,		/* Page is owned by blkback */
-#endif
 	PG_readaheadunused,	/* user oriented readahead as yet unused*/
 	__NR_PAGEFLAGS,
 

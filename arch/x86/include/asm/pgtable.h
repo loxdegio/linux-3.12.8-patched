@@ -445,10 +445,20 @@ static inline int pte_same(pte_t a, pte_t b)
 	return a.pte == b.pte;
 }
 
+static inline int pteval_present(pteval_t pteval)
+{
+	/*
+	 * Yes Linus, _PAGE_PROTNONE == _PAGE_NUMA. Expressing it this
+	 * way clearly states that the intent is that protnone and numa
+	 * hinting ptes are considered present for the purposes of
+	 * pagetable operations like zapping, protection changes, gup etc.
+	 */
+	return pteval & (_PAGE_PRESENT | _PAGE_PROTNONE | _PAGE_NUMA);
+}
+
 static inline int pte_present(pte_t a)
 {
-	return pte_flags(a) & (_PAGE_PRESENT | _PAGE_PROTNONE |
-			       _PAGE_NUMA);
+	return pteval_present(pte_flags(a));
 }
 
 #define pte_accessible pte_accessible
@@ -873,6 +883,19 @@ static inline pte_t pte_swp_clear_soft_dirty(pte_t pte)
 {
 	VM_BUG_ON(pte_present(pte));
 	return pte_clear_flags(pte, _PAGE_SWP_SOFT_DIRTY);
+}
+
+#define pmd_move_must_withdraw pmd_move_must_withdraw
+struct spinlock;
+static inline int pmd_move_must_withdraw(struct spinlock *new_pmd_ptl,
+					 struct spinlock *old_pmd_ptl)
+{
+	/*
+	 * Archs like ppc64 use pgtable to store per pmd
+	 * specific information. So when we switch the pmd,
+	 * we should also withdraw and deposit the pgtable
+	 */
+	return true;
 }
 
 #include <asm-generic/pgtable.h>

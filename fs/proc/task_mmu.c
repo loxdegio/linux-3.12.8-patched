@@ -265,16 +265,10 @@ show_map_vma(struct seq_file *m, struct vm_area_struct *vma, int is_pid)
 	const char *name = NULL;
 
 	if (file) {
-		struct inode *inode = file_inode(vma->vm_file);
-
-		if (inode->i_sb->s_magic == BTRFS_SUPER_MAGIC) {
-			struct kstat stat;
-
-			vfs_getattr(&file->f_path, &stat);
-			dev = stat.dev;
-		} else {
-			dev = inode->i_sb->s_dev;
-		}
+		struct inode *inode;
+		file = vma_pr_or_file(vma);
+		inode = file_inode(file);
+		dev = inode->i_sb->s_dev;
 		ino = inode->i_ino;
 		pgoff = ((loff_t)vma->vm_pgoff) << PAGE_SHIFT;
 	}

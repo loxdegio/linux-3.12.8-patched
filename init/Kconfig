@@ -1069,7 +1069,8 @@ config CGROUP_PERF
 
 menuconfig CGROUP_SCHED
 	bool "Group CPU scheduler"
-	default !KERNEL_DESKTOP
+	depends on !SCHED_BFS
+	default n
 	help
 	  This feature lets CPU scheduler recognize task groups and control CPU
 	  bandwidth allocation to such task groups. It uses cgroups to group
@@ -1149,7 +1150,7 @@ config CHECKPOINT_RESTORE
 	  If unsure, say N here.
 
 menuconfig NAMESPACES
-	bool "Namespaces support"
+	bool "Namespaces support" if EXPERT
 	default !EXPERT
 	help
 	  Provides the way to make tasks work with different objects using
