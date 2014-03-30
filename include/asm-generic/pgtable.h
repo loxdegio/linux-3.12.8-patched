@@ -757,4 +757,17 @@ static inline pmd_t pmd_mknuma(pmd_t pmd)
 #define io_remap_pfn_range remap_pfn_range
 #endif
 
+#ifndef pmd_move_must_withdraw
+typedef struct spinlock spinlock_t;
+static inline int pmd_move_must_withdraw(spinlock_t *new_pmd_ptl,
+											spinlock_t *old_pmd_ptl)
+{
+		/*
+		 * With split pmd lock we also need to move preallocated
+		 * PTE page table if new_pmd is on different PMD page table.
+  	     */
+	return new_pmd_ptl != old_pmd_ptl;
+}
+#endif
+
 #endif /* _ASM_GENERIC_PGTABLE_H */

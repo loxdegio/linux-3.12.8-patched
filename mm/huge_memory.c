@@ -22,9 +22,9 @@
 #include <linux/migrate.h>
 #include <linux/hashtable.h>
 
+#include <asm-generic/pgtable.h>
 #include <asm/tlb.h>
 #include <asm/pgalloc.h>
-#include <asm/pgtable.h>
 #include "internal.h"
 
 /*
@@ -1961,7 +1961,7 @@ out:
 	return ret;
 }
 
-#define VM_NO_THP (VM_SPECIAL|VM_MIXEDMAP|VM_HUGETLB|VM_SHARED|VM_MAYSHARE)
+#define VM_NO_THP (VM_SPECIAL | VM_HUGETLB | VM_SHARED | VM_MAYSHARE)
 
 int hugepage_madvise(struct vm_area_struct *vma,
 		     unsigned long *vm_flags, int advice)
