@@ -91,8 +91,6 @@ struct flexcop_device {
 	int feedcount;
 	int pid_filtering;
 	int fullts_streaming_state;
-	/* the stream will be activated by an externally (by the fe for example) */
-	int need_external_stream_control;
 
 	/* bus specific callbacks */
 	flexcop_ibi_value(*read_ibi_reg) (struct flexcop_device *,
@@ -178,8 +176,6 @@ void flexcop_dump_reg(struct flexcop_device *fc,
 int flexcop_pid_feed_control(struct flexcop_device *fc,
 		struct dvb_demux_feed *dvbdmxfeed, int onoff);
 void flexcop_hw_filter_init(struct flexcop_device *fc);
-
-extern void flexcop_external_stream_control(struct dvb_frontend *fe, u8 onoff);
 
 void flexcop_smc_ctrl(struct flexcop_device *fc, int onoff);
 

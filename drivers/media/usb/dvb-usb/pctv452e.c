@@ -995,11 +995,11 @@ static struct dvb_usb_device_properties tt_connect_s2_3600_properties = {
 			/* parameter for the MPEG2-data transfer */
 			.stream = {
 				.type = USB_ISOC,
-				.count = 4,
+				.count = 7,
 				.endpoint = 0x02,
 				.u = {
 					.isoc = {
-						.framesperurb = 64,
+						.framesperurb = 4,
 						.framesize = 940,
 						.interval = 1
 					}

@@ -199,7 +199,6 @@ static bool debug;
 #define VENDOR_TIVO		0x105a
 #define VENDOR_CONEXANT		0x0572
 #define VENDOR_TWISTEDMELON	0x2596
-#define VENDOR_ADAPTEC		0x03f3
 
 enum mceusb_model_type {
 	MCE_GEN2 = 0,		/* Most boards */
@@ -310,9 +309,6 @@ static struct usb_device_id mceusb_dev_table[] = {
 	/* SMK/I-O Data GV-MC7/RCKIT Receiver */
 	{ USB_DEVICE(VENDOR_SMK, 0x0353),
 	  .driver_info = MCE_GEN2_NO_TX },
-	/* SMK Manufacturing, Inc. Receiver */
-	{ USB_DEVICE(VENDOR_SMK, 0x0357),
-         .driver_info = MCE_GEN2_NO_TX },
 	/* Tatung eHome Infrared Transceiver */
 	{ USB_DEVICE(VENDOR_TATUNG, 0x9150) },
 	/* Shuttle eHome Infrared Transceiver */
@@ -355,8 +351,6 @@ static struct usb_device_id mceusb_dev_table[] = {
 	{ USB_DEVICE(VENDOR_FORMOSA, 0xe015) },
 	/* Formosa21 / eHome Infrared Receiver */
 	{ USB_DEVICE(VENDOR_FORMOSA, 0xe016) },
-	/* Formosa21 / eHome Infrared Receiver */
-	{ USB_DEVICE(VENDOR_FORMOSA, 0xe042) },
 	/* Formosa aim / Trust MCE Infrared Receiver */
 	{ USB_DEVICE(VENDOR_FORMOSA, 0xe017),
 	  .driver_info = MCE_GEN2_NO_TX },
@@ -405,8 +399,6 @@ static struct usb_device_id mceusb_dev_table[] = {
 	{ USB_DEVICE(VENDOR_TWISTEDMELON, 0x8016) },
 	/* Twisted Melon Inc. - Manta Transceiver */
 	{ USB_DEVICE(VENDOR_TWISTEDMELON, 0x8042) },
-	/* Adaptec / HP eHome Receiver */
-	{ USB_DEVICE(VENDOR_ADAPTEC, 0x0094) },
 	/* Terminating entry */
 	{ }
 };

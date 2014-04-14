@@ -426,7 +426,7 @@ int netup_poll_ci_slot_status(struct dvb_ca_en50221 *en50221,
 	return state->status;
 }
 
-int netup_ci_init(struct cx23885_tsport *port, bool isDVBSky)
+int netup_ci_init(struct cx23885_tsport *port)
 {
 	struct netup_ci_state *state;
 	u8 cimax_init[34] = {
@@ -473,11 +473,6 @@ int netup_ci_init(struct cx23885_tsport *port, bool isDVBSky)
 		ci_dbg_print("%s: Unable create CI structure!\n", __func__);
 		ret = -ENOMEM;
 		goto err;
-	}
-
-	if(isDVBSky) {
-		cimax_init[32] = 0x22;
-		cimax_init[33] = 0x00;
 	}
 
 	port->port_priv = state;
@@ -552,20 +547,4 @@ void netup_ci_exit(struct cx23885_tsport *port)
 
 	dvb_ca_en50221_release(&state->ca);
 	kfree(state);
-}
-
-/* CI irq handler for DVBSky board*/
-int dvbsky_ci_slot_status(struct cx23885_dev *dev)
-{
-	struct cx23885_tsport *port = NULL;
-	struct netup_ci_state *state = NULL;
-
-	ci_dbg_print("%s:\n", __func__);
-
-	port = &dev->ts1;
-	state = port->port_priv;
-	schedule_work(&state->work);
-	ci_dbg_print("%s: Wakeup CI0\n", __func__);
-
-	return 1;
 }

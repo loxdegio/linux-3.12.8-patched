@@ -19,10 +19,6 @@ obj-$(CONFIG_DVB_SP8870) += sp8870.o
 obj-$(CONFIG_DVB_CX22700) += cx22700.o
 obj-$(CONFIG_DVB_S5H1432) += s5h1432.o
 obj-$(CONFIG_DVB_CX24110) += cx24110.o
-
-# inserted by Custler
-obj-$(CONFIG_DVB_CX24120) += cx24120.o
-
 obj-$(CONFIG_DVB_TDA8083) += tda8083.o
 obj-$(CONFIG_DVB_L64781) += l64781.o
 obj-$(CONFIG_DVB_DIB3000MB) += dib3000mb.o
@@ -101,9 +97,6 @@ obj-$(CONFIG_DVB_STV0367) += stv0367.o
 obj-$(CONFIG_DVB_CXD2820R) += cxd2820r.o
 obj-$(CONFIG_DVB_DRXK) += drxk.o
 obj-$(CONFIG_DVB_TDA18271C2DD) += tda18271c2dd.o
-obj-$(CONFIG_DVB_STV0367DD) += stv0367dd.o
-obj-$(CONFIG_DVB_TDA18212DD) += tda18212dd.o
-obj-$(CONFIG_DVB_CXD2843) += cxd2843.o
 obj-$(CONFIG_DVB_IT913X_FE) += it913x-fe.o
 obj-$(CONFIG_DVB_A8293) += a8293.o
 obj-$(CONFIG_DVB_TDA10071) += tda10071.o
@@ -111,5 +104,4 @@ obj-$(CONFIG_DVB_RTL2830) += rtl2830.o
 obj-$(CONFIG_DVB_RTL2832) += rtl2832.o
 obj-$(CONFIG_DVB_M88RS2000) += m88rs2000.o
 obj-$(CONFIG_DVB_AF9033) += af9033.o
-obj-$(CONFIG_DVB_M88DS3103) += m88ds3103.o
-obj-$(CONFIG_DVB_M88DC2800) += m88dc2800.o
+

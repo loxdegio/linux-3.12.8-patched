@@ -917,14 +917,8 @@ static noinline void __init kernel_init_freeable(void)
 	do_basic_setup();
 
 	/* Open the /dev/console on the rootfs, this should never fail */
-	char *console = "/dev_console";
-
-	if (sys_open((const char __user *) "/dev/console", O_RDWR, 0) < 0) {
-		sys_mknod(console, S_IFCHR|0600, (TTYAUX_MAJOR<<8)|1);
-		if (sys_open(console, O_RDWR, 0) < 0)
-			printk(KERN_WARNING "Warning: unable to open an initial console.\n");
-		sys_unlink(console);
-	}
+	if (sys_open((const char __user *) "/dev/console", O_RDWR, 0) < 0)
+		pr_err("Warning: unable to open an initial console.\n");
 
 	(void) sys_dup(0);
 	(void) sys_dup(0);
