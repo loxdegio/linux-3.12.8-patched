@@ -580,7 +580,7 @@ static inline int pmd_move_must_withdraw(spinlock_t *new_pmd_ptl,
 	 * With split pmd lock we also need to move preallocated
 	 * PTE page table if new_pmd is on different PMD page table.
 	 */
-	 return new_pmd_ptl != old_pmd_ptl;
+	return new_pmd_ptl != old_pmd_ptl;
 }
 #endif
 
