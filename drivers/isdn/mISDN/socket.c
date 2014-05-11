@@ -135,7 +135,7 @@ mISDN_sock_recvmsg(struct kiocb *iocb, struct socket *sock,
 		return err;
 
 	if (msg->msg_name) {
-		struct sockaddr_mISDN *maddr = msg->msg_name;
+		DECLARE_SOCKADDR(struct sockaddr_mISDN *, maddr, msg->msg_name);
 
 		maddr->family = AF_ISDN;
 		maddr->dev = _pms(sk)->dev->id;
@@ -179,7 +179,6 @@ mISDN_sock_sendmsg(struct kiocb *iocb, struct socket *sock,
 	struct sock		*sk = sock->sk;
 	struct sk_buff		*skb;
 	int			err = -ENOMEM;
-	struct sockaddr_mISDN	*maddr;
 
 	if (*debug & DEBUG_SOCKET)
 		printk(KERN_DEBUG "%s: len %d flags %x ch %d proto %x\n",
@@ -214,7 +213,7 @@ mISDN_sock_sendmsg(struct kiocb *iocb, struct socket *sock,
 
 	if (msg->msg_namelen >= sizeof(struct sockaddr_mISDN)) {
 		/* if we have a address, we use it */
-		maddr = (struct sockaddr_mISDN *)msg->msg_name;
+		DECLARE_SOCKADDR(struct sockaddr_mISDN *, maddr, msg->msg_name);
 		mISDN_HEAD_ID(skb) = maddr->channel;
 	} else { /* use default for L2 messages */
 		if ((sk->sk_protocol == ISDN_P_LAPD_TE) ||
@@ -607,11 +606,6 @@ data_sock_create(struct net *net, struct socket *sock, int protocol)
 {
 	struct sock *sk;
 
-	if (!capable(CAP_SYS_ADMIN) &&
-			!gid_eq(misdn_permitted_gid, current_gid()) &&
-			!in_group_p(misdn_permitted_gid))
-		return -EPERM;
-
 	if (sock->type != SOCK_DGRAM)
 		return -ESOCKTNOSUPPORT;
 
@@ -694,10 +688,6 @@ base_sock_ioctl(struct socket *sock, unsigned int cmd, unsigned long arg)
 	case IMSETDEVNAME:
 	{
 		struct mISDN_devrename dn;
-		if (!capable(CAP_SYS_ADMIN) &&
-				!gid_eq(misdn_permitted_gid, current_gid()) &&
-				!in_group_p(misdn_permitted_gid))
-			return -EPERM;
 		if (copy_from_user(&dn, (void __user *)arg,
 				   sizeof(dn))) {
 			err = -EFAULT;

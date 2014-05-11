@@ -1260,12 +1260,6 @@
 #define XVERVE_SIGNALYZER_SH4_PID	0xBCA4
 
 /*
- * CTI GmbH USB to RS485 converters (http://www.cti-lean.com)
- */
-#define FTDI_CTI_Mini_PID      0xF608  /* USB-485-Mini der Firma CTI*/
-#define FTDI_CTI_Nano_PID      0xF60B  /* USB-Nano-485 def Firma CTI*/
-
-/*
  * Segway Robotic Mobility Platform USB interface (using VID 0x0403)
  * Submitted by John G. Rogers
  */

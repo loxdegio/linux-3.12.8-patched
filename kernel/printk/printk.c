@@ -45,8 +45,6 @@
 #include <linux/poll.h>
 #include <linux/irq_work.h>
 #include <linux/utsname.h>
-#include <linux/jhash.h>
-#include <linux/device.h>
 
 #include <asm/uaccess.h>
 
@@ -759,14 +757,10 @@ void __init setup_log_buf(int early)
 		return;
 
 	if (early) {
-		unsigned long mem;
-
-		mem = memblock_alloc(new_log_buf_len, PAGE_SIZE);
-		if (!mem)
-			return;
-		new_log_buf = __va(mem);
+		new_log_buf =
+			memblock_virt_alloc(new_log_buf_len, PAGE_SIZE);
 	} else {
-		new_log_buf = alloc_bootmem_nopanic(new_log_buf_len);
+		new_log_buf = memblock_virt_alloc_nopanic(new_log_buf_len, 0);
 	}
 
 	if (unlikely(!new_log_buf)) {
@@ -1600,10 +1594,13 @@ asmlinkage int vprintk_emit(int facility, int level,
 		 * either merge it with the current buffer and flush, or if
 		 * there was a race with interrupts (prefix == true) then just
 		 * flush it out and store this line separately.
+		 * If the preceding printk was from a different task and missed
+		 * a newline, flush and append the newline.
 		 */
-		if (cont.len && cont.owner == current) {
-			if (!(lflags & LOG_PREFIX))
-				stored = cont_add(facility, level, text, text_len);
+		if (cont.len) {
+			if (cont.owner == current && !(lflags & LOG_PREFIX))
+				stored = cont_add(facility, level, text,
+						  text_len);
 			cont_flush(LOG_NEWLINE);
 		}
 
@@ -2845,49 +2842,6 @@ void kmsg_dump_rewind(struct kmsg_dumper *dumper)
 	raw_spin_unlock_irqrestore(&logbuf_lock, flags);
 }
 EXPORT_SYMBOL_GPL(kmsg_dump_rewind);
-
-#ifdef CONFIG_KMSG_IDS
-
-/**
- * printk_hash - print a kernel message include a hash over the message
- * @prefix: message prefix including the ".%06x" for the hash
- * @fmt: format string
- */
-asmlinkage int printk_hash(const char *prefix, const char *fmt, ...)
-{
-	va_list args;
-	int r;
-
-	r = printk(prefix, jhash(fmt, strlen(fmt), 0) & 0xffffff);
-	va_start(args, fmt);
-	r += vprintk(fmt, args);
-	va_end(args);
-
-	return r;
-}
-EXPORT_SYMBOL(printk_hash);
-
-/**
- * printk_dev_hash - print a kernel message include a hash over the message
- * @prefix: message prefix including the ".%06x" for the hash
- * @dev: device this printk is all about
- * @fmt: format string
- */
-asmlinkage int printk_dev_hash(const char *prefix, const char *driver_name,
-			       const char *fmt, ...)
-{
-	va_list args;
-	int r;
-
-	r = printk(prefix, driver_name, jhash(fmt, strlen(fmt), 0) & 0xffffff);
-	va_start(args, fmt);
-	r += vprintk(fmt, args);
-	va_end(args);
-
-	return r;
-}
-EXPORT_SYMBOL(printk_dev_hash);
-#endif
 
 static char dump_stack_arch_desc_str[128];
 

@@ -17,11 +17,10 @@
 SVGA_MODE	:= -DSVGA_MODE=NORMAL_VGA
 
 targets		:= vmlinux.bin setup.bin setup.elf bzImage
-targets		+= vmlinuz vmlinux-stripped
 targets		+= fdimage fdimage144 fdimage288 image.iso mtools.conf
 subdir-		:= compressed
 
-setup-y		+= a20.o bioscall.o cmdline.o copy.o cpu.o cpucheck.o
+setup-y		+= a20.o bioscall.o cmdline.o copy.o cpu.o cpuflags.o cpucheck.o
 setup-y		+= early_serial_console.o edd.o header.o main.o mca.o memory.o
 setup-y		+= pm.o pmjump.o printf.o regs.o string.o tty.o video.o
 setup-y		+= video-mode.o version.o
@@ -34,8 +33,6 @@ setup-$(CONFIG_X86_APM_BOOT) += apm.o
 setup-y		+= video-vga.o
 setup-y		+= video-vesa.o
 setup-y		+= video-bios.o
-
-setup-$(CONFIG_XEN) := header.o version.o
 
 targets		+= $(setup-y)
 hostprogs-y	:= mkcpustr tools/build
@@ -54,20 +51,7 @@ $(obj)/cpustr.h: $(obj)/mkcpustr FORCE
 
 # ---------------------------------------------------------------------------
 
-# How to compile the 16-bit code.  Note we always compile for -march=i386,
-# that way we can complain to the user if the CPU is insufficient.
-KBUILD_CFLAGS	:= $(USERINCLUDE) -m32 -g -Os -D_SETUP -D__KERNEL__ \
-		   -DDISABLE_BRANCH_PROFILING \
-		   -Wall -Wstrict-prototypes \
-		   -march=i386 -mregparm=3 \
-		   -include $(srctree)/$(src)/code16gcc.h \
-		   -fno-strict-aliasing -fomit-frame-pointer -fno-pic \
-		   -mno-mmx -mno-sse \
-		   $(call cc-option, -ffreestanding) \
-		   $(call cc-option, -fno-toplevel-reorder,\
-		   $(call cc-option, -fno-unit-at-a-time)) \
-		   $(call cc-option, -fno-stack-protector) \
-		   $(call cc-option, -mpreferred-stack-boundary=2)
+KBUILD_CFLAGS	:= $(USERINCLUDE) $(REALMODE_CFLAGS) -D_SETUP
 KBUILD_AFLAGS	:= $(KBUILD_CFLAGS) -D__ASSEMBLY__
 GCOV_PROFILE := n
 
@@ -194,20 +178,6 @@ bzlilo: $(obj)/bzImage
 	cp System.map $(INSTALL_PATH)/
 	if [ -x /sbin/lilo ]; then /sbin/lilo; else /etc/lilo/install; fi
 
-$(obj)/vmlinuz: $(obj)/vmlinux-stripped FORCE
-	$(call if_changed,gzip)
-	@echo 'Kernel: $@ is ready' ' (#'`cat .version`')'
-
-$(obj)/vmlinux-stripped: OBJCOPYFLAGS := -g --strip-unneeded
-$(obj)/vmlinux-stripped: vmlinux FORCE
-	$(call if_changed,objcopy)
-
-ifneq ($(CONFIG_XEN)-$(CONFIG_XEN_BZIMAGE),y-)
-bzImage := bzImage
-else
-bzImage := vmlinuz
-endif
-
 install:
-	sh $(srctree)/$(src)/install.sh $(KERNELRELEASE) $(obj)/$(bzImage) \
+	sh $(srctree)/$(src)/install.sh $(KERNELRELEASE) $(obj)/bzImage \
 		System.map "$(INSTALL_PATH)"

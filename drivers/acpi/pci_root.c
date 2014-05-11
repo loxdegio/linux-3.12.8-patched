@@ -35,9 +35,7 @@
 #include <linux/pci-aspm.h>
 #include <linux/acpi.h>
 #include <linux/slab.h>
-#include <acpi/acpi_bus.h>
-#include <acpi/acpi_drivers.h>
-#include <acpi/apei.h>
+#include <acpi/apei.h>	/* for acpi_hest_init() */
 
 #include "internal.h"
 
@@ -50,6 +48,12 @@ ACPI_MODULE_NAME("pci_root");
 static int acpi_pci_root_add(struct acpi_device *device,
 			     const struct acpi_device_id *not_used);
 static void acpi_pci_root_remove(struct acpi_device *device);
+
+static int acpi_pci_root_scan_dependent(struct acpi_device *adev)
+{
+	acpiphp_check_host_bridge(adev->handle);
+	return 0;
+}
 
 #define ACPI_PCIE_REQ_SUPPORT (OSC_PCI_EXT_CONFIG_SUPPORT \
 				| OSC_PCI_ASPM_SUPPORT \
@@ -66,7 +70,8 @@ static struct acpi_scan_handler pci_root_handler = {
 	.attach = acpi_pci_root_add,
 	.detach = acpi_pci_root_remove,
 	.hotplug = {
-		.ignore = true,
+		.enabled = true,
+		.scan_dependent = acpi_pci_root_scan_dependent,
 	},
 };
 
@@ -499,28 +504,6 @@ static void negotiate_os_control(struct acpi_pci_root *root, int *no_aspm,
 	}
 }
 
-#ifdef CONFIG_PCI_GUESTDEV
-#include <linux/sysfs.h>
-
-static ssize_t seg_show(struct device *dev,
-			struct device_attribute *attr, char *buf)
-{
-	struct acpi_pci_root *root = acpi_driver_data(to_acpi_device(dev));
-
-	return sprintf(buf, "%04x\n", root->segment);
-}
-static DEVICE_ATTR(seg, 0444, seg_show, NULL);
-
-static ssize_t bbn_show(struct device *dev,
-			struct device_attribute *attr, char *buf)
-{
-	struct acpi_pci_root *root = acpi_driver_data(to_acpi_device(dev));
-
-	return sprintf(buf, "%02x\n", (unsigned int)root->secondary.start);
-}
-static DEVICE_ATTR(bbn, 0444, bbn_show, NULL);
-#endif
-
 static int acpi_pci_root_add(struct acpi_device *device,
 			     const struct acpi_device_id *not_used)
 {
@@ -612,13 +595,6 @@ static int acpi_pci_root_add(struct acpi_device *device,
 	if (no_aspm)
 		pcie_no_aspm();
 
-#ifdef CONFIG_PCI_GUESTDEV
-	if (device_create_file(&device->dev, &dev_attr_seg))
-		dev_warn(&device->dev, "could not create seg attr\n");
-	if (device_create_file(&device->dev, &dev_attr_bbn))
-		dev_warn(&device->dev, "could not create bbn attr\n");
-#endif
-
 	pci_acpi_add_bus_pm_notifier(device, root->bus);
 	if (device->wakeup.flags.run_wake)
 		device_set_run_wake(root->bus->bridge, true);
@@ -628,7 +604,9 @@ static int acpi_pci_root_add(struct acpi_device *device,
 		pci_assign_unassigned_root_bus_resources(root->bus);
 	}
 
+	pci_lock_rescan_remove();
 	pci_bus_add_devices(root->bus);
+	pci_unlock_rescan_remove();
 	return 1;
 
 end:
@@ -640,6 +618,8 @@ static void acpi_pci_root_remove(struct acpi_device *device)
 {
 	struct acpi_pci_root *root = acpi_driver_data(device);
 
+	pci_lock_rescan_remove();
+
 	pci_stop_root_bus(root->bus);
 
 	device_set_run_wake(root->bus->bridge, false);
@@ -647,164 +627,17 @@ static void acpi_pci_root_remove(struct acpi_device *device)
 
 	pci_remove_root_bus(root->bus);
 
+	pci_unlock_rescan_remove();
+
 	kfree(root);
 }
 
 void __init acpi_pci_root_init(void)
 {
 	acpi_hest_init();
-
-	if (!acpi_pci_disabled) {
-		pci_acpi_crs_quirks();
-		acpi_scan_add_handler(&pci_root_handler);
-	}
-}
-/* Support root bridge hotplug */
-
-static void handle_root_bridge_insertion(acpi_handle handle)
-{
-	struct acpi_device *device;
-
-	if (!acpi_bus_get_device(handle, &device)) {
-		dev_printk(KERN_DEBUG, &device->dev,
-			   "acpi device already exists; ignoring notify\n");
+	if (acpi_pci_disabled)
 		return;
-	}
 
-	if (acpi_bus_scan(handle))
-		acpi_handle_err(handle, "cannot add bridge to acpi list\n");
+	pci_acpi_crs_quirks();
+	acpi_scan_add_handler_with_hotplug(&pci_root_handler, "pci_root");
 }
-
-static void hotplug_event_root(void *data, u32 type)
-{
-	acpi_handle handle = data;
-	struct acpi_pci_root *root;
-
-	acpi_scan_lock_acquire();
-
-	root = acpi_pci_find_root(handle);
-
-	switch (type) {
-	case ACPI_NOTIFY_BUS_CHECK:
-		/* bus enumerate */
-		acpi_handle_printk(KERN_DEBUG, handle,
-				   "Bus check notify on %s\n", __func__);
-		if (root)
-			acpiphp_check_host_bridge(handle);
-		else
-			handle_root_bridge_insertion(handle);
-
-		break;
-
-	case ACPI_NOTIFY_DEVICE_CHECK:
-		/* device check */
-		acpi_handle_printk(KERN_DEBUG, handle,
-				   "Device check notify on %s\n", __func__);
-		if (!root)
-			handle_root_bridge_insertion(handle);
-		break;
-
-	case ACPI_NOTIFY_EJECT_REQUEST:
-		/* request device eject */
-		acpi_handle_printk(KERN_DEBUG, handle,
-				   "Device eject notify on %s\n", __func__);
-		if (!root)
-			break;
-
-		get_device(&root->device->dev);
-
-		acpi_scan_lock_release();
-
-		acpi_bus_device_eject(root->device, ACPI_NOTIFY_EJECT_REQUEST);
-		return;
-	default:
-		acpi_handle_warn(handle,
-				 "notify_handler: unknown event type 0x%x\n",
-				 type);
-		break;
-	}
-
-	acpi_scan_lock_release();
-}
-
-static void handle_hotplug_event_root(acpi_handle handle, u32 type,
-					void *context)
-{
-	acpi_hotplug_execute(hotplug_event_root, handle, type);
-}
-
-static acpi_status __init
-find_root_bridges(acpi_handle handle, u32 lvl, void *context, void **rv)
-{
-	acpi_status status;
-	int *count = (int *)context;
-
-	if (!acpi_is_root_bridge(handle))
-		return AE_OK;
-
-	(*count)++;
-
-	status = acpi_install_notify_handler(handle, ACPI_SYSTEM_NOTIFY,
-					handle_hotplug_event_root, NULL);
-	if (ACPI_FAILURE(status))
-		acpi_handle_printk(KERN_DEBUG, handle,
-			"notify handler is not installed, exit status: %u\n",
-			 (unsigned int)status);
-	else
-		acpi_handle_printk(KERN_DEBUG, handle,
-				   "notify handler is installed\n");
-
-	return AE_OK;
-}
-
-void __init acpi_pci_root_hp_init(void)
-{
-	int num = 0;
-
-	acpi_walk_namespace(ACPI_TYPE_DEVICE, ACPI_ROOT_OBJECT,
-		ACPI_UINT32_MAX, find_root_bridges, NULL, &num, NULL);
-
-	printk(KERN_DEBUG "Found %d acpi root devices\n", num);
-}
-
-#ifdef CONFIG_PCI_GUESTDEV
-struct acpi_pci_get_root_seg_bbn {
-	const char *hid, *uid;
-	int *seg, *bbn;
-};
-
-static int _acpi_pci_get_root_seg_bbn(struct device *dev, void *ctxt)
-{
-	struct acpi_device *device = to_acpi_device(dev);
-	const struct acpi_pci_root *root = acpi_driver_data(device);
-	const struct acpi_pci_get_root_seg_bbn *data = ctxt;
-
-	if (!acpi_is_root_bridge(ACPI_HANDLE(dev))
-	    || strcmp(acpi_device_hid(device), data->hid)
-	    || (device->pnp.unique_id ? strcmp(device->pnp.unique_id,
-					       data->uid)
-				      : strlen(data->uid)))
-		return 0;
-
-	if (WARN_ON_ONCE(device != root->device))
-		return 0;
-
-	*data->seg = root->segment;
-	*data->bbn = root->secondary.start;
-
-	return 1;
-}
-
-int acpi_pci_get_root_seg_bbn(char *hid, char *uid, int *seg, int *bbn)
-{
-	struct acpi_pci_get_root_seg_bbn data = {
-		.hid = hid,
-		.uid = uid,
-		.seg = seg,
-		.bbn = bbn
-	};
-
-	return bus_for_each_dev(&acpi_bus_type, NULL, &data,
-				_acpi_pci_get_root_seg_bbn) > 0;
-}
-#endif

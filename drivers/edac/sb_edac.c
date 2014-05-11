@@ -461,7 +461,7 @@ static const struct pci_id_table pci_dev_descr_ibridge_table[] = {
 /*
  *	pci_device_id	table for which devices we are looking for
  */
-static DEFINE_PCI_DEVICE_TABLE(sbridge_pci_tbl) = {
+static const struct pci_device_id sbridge_pci_tbl[] = {
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_SBRIDGE_IMC_TA)},
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_IBRIDGE_IMC_HA0_TA)},
 	{0,}			/* 0 terminated list. */
@@ -915,7 +915,7 @@ static void get_memory_layout(const struct mem_ctl_info *mci)
 	}
 }
 
-struct mem_ctl_info *get_mci_for_node_id(u8 node_id)
+static struct mem_ctl_info *get_mci_for_node_id(u8 node_id)
 {
 	struct sbridge_dev *sbridge_dev;
 
@@ -1829,6 +1829,9 @@ static int sbridge_mce_check_error(struct notifier_block *nb, unsigned long val,
 	struct mem_ctl_info *mci;
 	struct sbridge_pvt *pvt;
 
+	if (get_edac_report_status() == EDAC_REPORTING_DISABLED)
+		return NOTIFY_DONE;
+
 	mci = get_mci_for_node_id(mce->socketid);
 	if (!mci)
 		return NOTIFY_BAD;
@@ -1856,11 +1859,7 @@ static int sbridge_mce_check_error(struct notifier_block *nb, unsigned long val,
 		mce->socketid, mce->apicid);
 
 	/* Only handle if it is the right mc controller */
-#ifdef CONFIG_XEN /* Could easily be used for non-Xen too. */
-	if (mce->socketid != pvt->sbridge_dev->mc)
-#else
 	if (cpu_data(mce->cpu).phys_proc_id != pvt->sbridge_dev->mc)
-#endif
 		return NOTIFY_DONE;
 
 	smp_rmb();
@@ -2146,9 +2145,10 @@ static int __init sbridge_init(void)
 	opstate_init();
 
 	pci_rc = pci_register_driver(&sbridge_driver);
-
 	if (pci_rc >= 0) {
 		mce_register_decode_chain(&sbridge_mce_dec);
+		if (get_edac_report_status() == EDAC_REPORTING_DISABLED)
+			sbridge_printk(KERN_WARNING, "Loading driver, error reporting disabled.\n");
 		return 0;
 	}
 

@@ -44,10 +44,16 @@
 #define SCHED_IDLEPRIO		SCHED_IDLE
 #define SCHED_MAX		(SCHED_IDLEPRIO)
 #define SCHED_RANGE(policy)	((policy) <= SCHED_MAX)
-#endif
+#else /* CONFIG_SCHED_BFS */
+#define SCHED_DEADLINE		6
+#endif /* CONFIG_SCHED_BFS */
 
 /* Can be ORed in to make sure the process is reverted back to SCHED_NORMAL on fork */
 #define SCHED_RESET_ON_FORK     0x40000000
 
+/*
+ * For the sched_{set,get}attr() calls
+ */
+#define SCHED_FLAG_RESET_ON_FORK	0x01
 
 #endif /* _UAPI_LINUX_SCHED_H */

@@ -113,7 +113,6 @@
 #include <linux/uaccess.h>
 #include <linux/gfp.h>
 #include <asm/irq.h>
-#include <xen/xen_pvonhvm.h>
 
 #define RTL8139_DRIVER_NAME   DRV_NAME " Fast Ethernet driver " DRV_VERSION
 
@@ -966,10 +965,9 @@ static int rtl8139_init_one(struct pci_dev *pdev,
 	if (pdev->vendor == PCI_VENDOR_ID_REALTEK &&
 	    pdev->device == PCI_DEVICE_ID_REALTEK_8139 && pdev->revision >= 0x20) {
 		dev_info(&pdev->dev,
-			   "This (id %04x:%04x rev %02x) is an enhanced 8139C+ chip\n",
+			   "This (id %04x:%04x rev %02x) is an enhanced 8139C+ chip, use 8139cp\n",
 		       	   pdev->vendor, pdev->device, pdev->revision);
-		dev_info(&pdev->dev,
-			   "Use the \"8139cp\" driver for improved performance and stability.\n");
+		return -ENODEV;
 	}
 
 	if (pdev->vendor == PCI_VENDOR_ID_REALTEK &&
@@ -2663,9 +2661,6 @@ static struct pci_driver rtl8139_pci_driver = {
 
 static int __init rtl8139_init_module (void)
 {
-	if (xen_pvonhvm_unplugged_nics)
-		return -EBUSY;
-
 	/* when we're a module, we always print a version message,
 	 * even if no 8139 board is found.
 	 */

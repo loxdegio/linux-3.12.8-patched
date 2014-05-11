@@ -1,5 +1,4 @@
 menu "CPU Idle"
-	depends on !PROCESSOR_EXTERNAL_CONTROL
 
 config CPU_IDLE
 	bool "CPU idle PM support"
@@ -34,6 +33,11 @@ config CPU_IDLE_GOV_MENU
 menu "ARM CPU Idle Drivers"
 depends on ARM
 source "drivers/cpuidle/Kconfig.arm"
+endmenu
+
+menu "POWERPC CPU Idle Drivers"
+depends on PPC
+source "drivers/cpuidle/Kconfig.powerpc"
 endmenu
 
 endif

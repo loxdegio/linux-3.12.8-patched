@@ -22,12 +22,6 @@ obj-m := $(filter-out $(obj-y),$(obj-m))
 
 lib-y := $(filter-out $(obj-y), $(sort $(lib-y) $(lib-m)))
 
-# Remove objects forcibly disabled
-
-obj-y := $(filter-out $(disabled-obj-y),$(obj-y))
-obj-m := $(filter-out $(disabled-obj-y),$(obj-m))
-lib-y := $(filter-out $(disabled-obj-y),$(lib-y))
-
 
 # Handle objects in subdirs
 # ---------------------------------------------------------------------------
@@ -158,6 +152,7 @@ ld_flags       = $(LDFLAGS) $(ldflags-y)
 dtc_cpp_flags  = -Wp,-MD,$(depfile).pre.tmp -nostdinc                    \
 		 -I$(srctree)/arch/$(SRCARCH)/boot/dts                   \
 		 -I$(srctree)/arch/$(SRCARCH)/boot/dts/include           \
+		 -I$(srctree)/drivers/of/testcase-data                   \
 		 -undef -D__DTS__
 
 # Finds the multi-part object the current object will be linked into

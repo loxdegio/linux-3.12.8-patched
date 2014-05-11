@@ -7,7 +7,6 @@ source "virt/kvm/Kconfig"
 menuconfig VIRTUALIZATION
 	bool "Virtualization"
 	depends on HAVE_KVM || X86
-	depends on !XEN
 	default y
 	---help---
 	  Say Y here to get to see options for using your Linux host to run other
@@ -81,7 +80,7 @@ config KVM_MMU_AUDIT
 	depends on KVM && TRACEPOINTS
 	---help---
 	 This option adds a R/W kVM module parameter 'mmu_audit', which allows
-	 audit  KVM MMU at runtime.
+	 auditing of KVM MMU events at runtime.
 
 config KVM_DEVICE_ASSIGNMENT
 	bool "KVM legacy PCI device assignment support"

@@ -65,10 +65,6 @@ static DEFINE_SPINLOCK(pstore_lock);
 struct pstore_info *psinfo;
 
 static char *backend;
-static int auto_action=0;
-module_param(auto_action, int, 0664);
-MODULE_PARM_DESC(auto_action, "action to take on backend "
-		 "registration: 0=nothing, 1=print, 2=print+clear");
 
 /* Compression parameters */
 #define COMPR_LEVEL 6
@@ -81,8 +77,6 @@ static size_t big_oops_buf_sz;
 
 /* How much of the console log to snapshot */
 static unsigned long kmsg_bytes = 10240;
-module_param(kmsg_bytes, ulong, 0644);
-MODULE_PARM_DESC(kmsg_bytes, "maximum size to save of a crash dump");
 
 void pstore_set_kmsg_bytes(int bytes)
 {
@@ -423,14 +417,6 @@ int pstore_register(struct pstore_info *psi)
 {
 	struct module *owner = psi->owner;
 
-	if (!backend && !strcmp(psi->name, "efi")) {
-		pr_info("Efi pstore disabled, enforce via pstore.backend=efi");
-		pr_info("On a broken BIOS, this can severely harm your system");
-		pr_info("Only enable efi based pstore when you know what you are doing");
-		spin_unlock(&pstore_lock);
-		return -EINVAL;
-	}
-
 	if (backend && strcmp(backend, psi->name))
 		return -EPERM;
 
@@ -454,11 +440,7 @@ int pstore_register(struct pstore_info *psi)
 	allocate_buf_for_compression();
 
 	if (pstore_is_mounted())
-		pstore_get_records(PGR_VERBOSE|PGR_POPULATE);
-
-	if (auto_action)
-		pstore_get_records(PGR_SYSLOG|
-				   ((auto_action>1)?PGR_CLEAR:0));
+		pstore_get_records(0);
 
 	kmsg_dump_register(&pstore_dumper);
 
@@ -486,7 +468,7 @@ EXPORT_SYMBOL_GPL(pstore_register);
  * when we are re-scanning the backing store looking to add new
  * error records.
  */
-void pstore_get_records(unsigned flags)
+void pstore_get_records(int quiet)
 {
 	struct pstore_info *psi = psinfo;
 	char			*buf = NULL;
@@ -524,30 +506,15 @@ void pstore_get_records(unsigned flags)
 				compressed = true;
 			}
 		}
-
-		if (flags & PGR_POPULATE)
-			rc = pstore_mkfile(type, psi->name, id, count, buf,
-					   compressed, (size_t)size, time, psi);
-
-		if (type == PSTORE_TYPE_DMESG) {
-			if (flags & PGR_SYSLOG) {
-				char _fmt[32];
-				snprintf(_fmt, 32, KERN_NOTICE "%%%ds\\n", size);
-				pr_notice("---------- pstore: ----------\n");
-				printk(_fmt, buf);
-				pr_notice("-----------------------------\n");
-			}
-			if (flags & PGR_CLEAR && psi->erase)
-				psi->erase(type, id, size, time, psi);
-		}
-
+		rc = pstore_mkfile(type, psi->name, id, count, buf,
+				  compressed, (size_t)size, time, psi);
 		if (unzipped_len < 0) {
 			/* Free buffer other than big oops */
 			kfree(buf);
 			buf = NULL;
 		} else
 			unzipped_len = -1;
-		if (rc && (rc != -EEXIST || (flags & PGR_VERBOSE)))
+		if (rc && (rc != -EEXIST || !quiet))
 			failed++;
 	}
 	if (psi->close)
@@ -562,7 +529,7 @@ out:
 
 static void pstore_dowork(struct work_struct *work)
 {
-	pstore_get_records(PGR_QUIET|PGR_POPULATE);
+	pstore_get_records(1);
 }
 
 static void pstore_timefunc(unsigned long dummy)

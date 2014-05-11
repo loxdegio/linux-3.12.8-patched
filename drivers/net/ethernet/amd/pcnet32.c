@@ -57,7 +57,6 @@ static const char *const version =
 
 #include <asm/dma.h>
 #include <asm/irq.h>
-#include <xen/xen_pvonhvm.h>
 
 /*
  * PCI device identifiers for "new style" Linux PCI Device Drivers
@@ -1669,7 +1668,7 @@ pcnet32_probe1(unsigned long ioaddr, int shared, struct pci_dev *pdev)
 	for (i = 0; i < ETH_ALEN; i++)
 		promaddr[i] = inb(ioaddr + i);
 
-	if (memcmp(promaddr, dev->dev_addr, ETH_ALEN) ||
+	if (!ether_addr_equal(promaddr, dev->dev_addr) ||
 	    !is_valid_ether_addr(dev->dev_addr)) {
 		if (is_valid_ether_addr(promaddr)) {
 			if (pcnet32_debug & NETIF_MSG_PROBE) {
@@ -2866,9 +2865,6 @@ MODULE_LICENSE("GPL");
 
 static int __init pcnet32_init_module(void)
 {
-	if (xen_pvonhvm_unplugged_nics)
-		return -EBUSY;
-
 	pr_info("%s", version);
 
 	pcnet32_debug = netif_msg_init(debug, PCNET32_MSG_DEFAULT);

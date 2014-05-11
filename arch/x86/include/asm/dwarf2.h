@@ -27,7 +27,6 @@
 #define CFI_REMEMBER_STATE	.cfi_remember_state
 #define CFI_RESTORE_STATE	.cfi_restore_state
 #define CFI_UNDEFINED		.cfi_undefined
-#define CFI_SAME_VALUE		.cfi_same_value
 #define CFI_ESCAPE		.cfi_escape
 
 #ifdef CONFIG_AS_CFI_SIGNAL_FRAME
@@ -36,8 +35,7 @@
 #define CFI_SIGNAL_FRAME
 #endif
 
-#if !defined(CONFIG_UNWIND_INFO) && defined(CONFIG_AS_CFI_SECTIONS) \
-    && defined(__ASSEMBLY__)
+#if defined(CONFIG_AS_CFI_SECTIONS) && defined(__ASSEMBLY__)
 	/*
 	 * Emit CFI data in .debug_frame sections, not .eh_frame sections.
 	 * The latter we currently just discard since we don't do DWARF
@@ -55,7 +53,7 @@
  * Due to the structure of pre-exisiting code, don't use assembler line
  * comment character # to ignore the arguments. Instead, use a dummy macro.
  */
-.macro cfi_ignore a=0, b=0, c=0, d=0, e=0, f=0, g=0, h=0
+.macro cfi_ignore a=0, b=0, c=0, d=0
 .endm
 
 #define CFI_STARTPROC		cfi_ignore
@@ -71,7 +69,6 @@
 #define CFI_REMEMBER_STATE	cfi_ignore
 #define CFI_RESTORE_STATE	cfi_ignore
 #define CFI_UNDEFINED		cfi_ignore
-#define CFI_SAME_VALUE		cfi_ignore
 #define CFI_ESCAPE		cfi_ignore
 #define CFI_SIGNAL_FRAME	cfi_ignore
 

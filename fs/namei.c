@@ -196,6 +196,7 @@ recopy:
 		goto error;
 
 	result->uptr = filename;
+	result->aname = NULL;
 	audit_getname(result);
 	return result;
 
@@ -209,7 +210,35 @@ getname(const char __user * filename)
 {
 	return getname_flags(filename, 0, NULL);
 }
-EXPORT_SYMBOL(getname);
+
+/*
+ * The "getname_kernel()" interface doesn't do pathnames longer
+ * than EMBEDDED_NAME_MAX. Deal with it - you're a kernel user.
+ */
+struct filename *
+getname_kernel(const char * filename)
+{
+	struct filename *result;
+	char *kname;
+	int len;
+
+	len = strlen(filename);
+	if (len >= EMBEDDED_NAME_MAX)
+		return ERR_PTR(-ENAMETOOLONG);
+
+	result = __getname();
+	if (unlikely(!result))
+		return ERR_PTR(-ENOMEM);
+
+	kname = (char *)result + sizeof(*result);
+	result->name = kname;
+	result->uptr = NULL;
+	result->aname = NULL;
+	result->separate = false;
+
+	strlcpy(kname, filename, EMBEDDED_NAME_MAX);
+	return result;
+}
 
 #ifdef CONFIG_AUDITSYSCALL
 void putname(struct filename *name)
@@ -235,27 +264,9 @@ static int check_acl(struct inode *inode, int mask)
 	        return posix_acl_permission(inode, acl, mask & ~MAY_NOT_BLOCK);
 	}
 
-	acl = get_cached_acl(inode, ACL_TYPE_ACCESS);
-
-	/*
-	 * A filesystem can force a ACL callback by just never filling the
-	 * ACL cache. But normally you'd fill the cache either at inode
-	 * instantiation time, or on the first ->get_acl call.
-	 *
-	 * If the filesystem doesn't have a get_acl() function at all, we'll
-	 * just create the negative cache entry.
-	 */
-	if (acl == ACL_NOT_CACHED) {
-	        if (inode->i_op->get_acl) {
-			acl = inode->i_op->get_acl(inode, ACL_TYPE_ACCESS);
-			if (IS_ERR(acl))
-				return PTR_ERR(acl);
-		} else {
-		        set_cached_acl(inode, ACL_TYPE_ACCESS, NULL);
-		        return -EAGAIN;
-		}
-	}
-
+	acl = get_acl(inode, ACL_TYPE_ACCESS);
+	if (IS_ERR(acl))
+		return PTR_ERR(acl);
 	if (acl) {
 	        int error = posix_acl_permission(inode, acl, mask);
 	        posix_acl_release(acl);
@@ -402,7 +413,6 @@ int __inode_permission(struct inode *inode, int mask)
 
 	return security_inode_permission(inode, mask);
 }
-EXPORT_SYMBOL(__inode_permission);
 
 /**
  * sb_permission - Check superblock-level permissions
@@ -1871,7 +1881,7 @@ static int path_init(int dfd, const char *name, unsigned int flags,
 
 		nd->path = f.file->f_path;
 		if (flags & LOOKUP_RCU) {
-			if (f.need_put)
+			if (f.flags & FDPUT_FPUT)
 				*fp = f.file;
 			nd->seq = __read_seqcount_begin(&nd->path.dentry->d_seq);
 			rcu_read_lock();
@@ -2364,26 +2374,6 @@ static inline int check_sticky(struct inode *dir, struct inode *inode)
 }
 
 /*
- * Do the directory specific tests of inode_permission() and call the
- * may_delete inode operation.  The may_delete inode operation must do the
- * sticky check when needed.
- */
-static int may_delete_iop(struct inode *dir, struct inode *inode, int replace)
-{
-	int error;
-
-	if (IS_RDONLY(dir))
-		return -EROFS;
-	if (IS_IMMUTABLE(dir))
-		return -EACCES;
-	error = dir->i_op->may_delete(dir, inode, replace);
-	if (!error)
-		error = security_inode_permission(dir, MAY_WRITE | MAY_EXEC);
-
-	return error;
-}
-
-/*
  *	Check whether we can remove a link victim from directory dir, check
  *  whether the type of victim is right.
  *  1. We can't do it if dir is read-only (done in permission())
@@ -2402,8 +2392,7 @@ static int may_delete_iop(struct inode *dir, struct inode *inode, int replace)
  * 10. We don't allow removal of NFS sillyrenamed files; it's handled by
  *     nfs_async_unlink().
  */
-static int may_delete(struct inode *dir, struct dentry *victim,
-		      bool isdir, int replace)
+static int may_delete(struct inode *dir, struct dentry *victim, bool isdir)
 {
 	struct inode *inode = victim->d_inode;
 	int error;
@@ -2414,19 +2403,15 @@ static int may_delete(struct inode *dir, struct dentry *victim,
 
 	BUG_ON(victim->d_parent->d_inode != dir);
 	audit_inode_child(dir, victim, AUDIT_TYPE_CHILD_DELETE);
-	if (dir->i_op->may_delete)
-		error = may_delete_iop(dir, victim->d_inode, replace);
-	else {
-		error = inode_permission(dir, MAY_WRITE | MAY_EXEC);
-		if (!error && check_sticky(dir, victim->d_inode))
-			error = -EPERM;
-	}
+
+	error = inode_permission(dir, MAY_WRITE | MAY_EXEC);
 	if (error)
 		return error;
 	if (IS_APPEND(dir))
 		return -EPERM;
 
-	if (IS_APPEND(inode) || IS_IMMUTABLE(inode) || IS_SWAPFILE(inode))
+	if (check_sticky(dir, inode) || IS_APPEND(inode) ||
+	    IS_IMMUTABLE(inode) || IS_SWAPFILE(inode))
 		return -EPERM;
 	if (isdir) {
 		if (!d_is_directory(victim) && !d_is_autodir(victim))
@@ -2442,25 +2427,6 @@ static int may_delete(struct inode *dir, struct dentry *victim,
 	return 0;
 }
 
-/*
- * Do the directory specific tests of inode_permission() and call the
- * may_create inode operation.
- */
-static int may_create_iop(struct inode *dir, int isdir)
-{
-	int error;
-
-	if (IS_RDONLY(dir))
-		return -EROFS;
-	if (IS_IMMUTABLE(dir))
-		return -EACCES;
-	error = dir->i_op->may_create(dir, isdir);
-	if (!error)
-		error = security_inode_permission(dir, MAY_WRITE | MAY_EXEC);
-
-	return error;
-}
-
 /*	Check whether we can create an object with dentry child in directory
  *  dir.
  *  1. We can't do it if child already exists (open has special treatment for
@@ -2469,17 +2435,14 @@ static int may_create_iop(struct inode *dir, int isdir)
  *  3. We should have write and exec permissions on dir
  *  4. We can't do it if dir is immutable (done in permission())
  */
-static inline int may_create(struct inode *dir, struct dentry *child, int isdir)
+static inline int may_create(struct inode *dir, struct dentry *child)
 {
 	audit_inode_child(dir, child, AUDIT_TYPE_CHILD_CREATE);
 	if (child->d_inode)
 		return -EEXIST;
 	if (IS_DEADDIR(dir))
 		return -ENOENT;
-	if (dir->i_op->may_create)
-		return may_create_iop(dir, isdir);
-	else
-		return inode_permission(dir, MAY_WRITE | MAY_EXEC);
+	return inode_permission(dir, MAY_WRITE | MAY_EXEC);
 }
 
 /*
@@ -2527,7 +2490,7 @@ void unlock_rename(struct dentry *p1, struct dentry *p2)
 int vfs_create(struct inode *dir, struct dentry *dentry, umode_t mode,
 		bool want_excl)
 {
-	int error = may_create(dir, dentry, 0);
+	int error = may_create(dir, dentry);
 	if (error)
 		return error;
 
@@ -2859,7 +2822,7 @@ static int lookup_open(struct nameidata *nd, struct path *path,
 	/* Negative dentry, just create the file */
 	if (!dentry->d_inode && (op->open_flag & O_CREAT)) {
 		umode_t mode = op->mode;
-		if (!IS_ACL(dir->d_inode))
+		if (!IS_POSIXACL(dir->d_inode))
 			mode &= ~current_umask();
 		/*
 		 * This write is needed to ensure that a
@@ -3072,12 +3035,9 @@ finish_open_created:
 	error = may_open(&nd->path, acc_mode, open_flag);
 	if (error)
 		goto out;
-
-	BUG_ON(*opened & FILE_OPENED); /* once it's opened, it's opened */
-	error = vfs_open(&nd->path, file, current_cred());
-	if (!error) {
-		*opened |= FILE_OPENED;
-	} else {
+	file->f_path.mnt = nd->path.mnt;
+	error = finish_open(file, nd->path.dentry, NULL, opened);
+	if (error) {
 		if (error == -EOPENSTALE)
 			goto stale_open;
 		goto out;
@@ -3392,7 +3352,7 @@ EXPORT_SYMBOL(user_path_create);
 
 int vfs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode, dev_t dev)
 {
-	int error = may_create(dir, dentry, 0);
+	int error = may_create(dir, dentry);
 
 	if (error)
 		return error;
@@ -3450,7 +3410,7 @@ retry:
 	if (IS_ERR(dentry))
 		return PTR_ERR(dentry);
 
-	if (!IS_ACL(path.dentry->d_inode))
+	if (!IS_POSIXACL(path.dentry->d_inode))
 		mode &= ~current_umask();
 	error = security_path_mknod(&path, dentry, mode, dev);
 	if (error)
@@ -3483,7 +3443,7 @@ SYSCALL_DEFINE3(mknod, const char __user *, filename, umode_t, mode, unsigned, d
 
 int vfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
 {
-	int error = may_create(dir, dentry, 1);
+	int error = may_create(dir, dentry);
 	unsigned max_links = dir->i_sb->s_max_links;
 
 	if (error)
@@ -3518,7 +3478,7 @@ retry:
 	if (IS_ERR(dentry))
 		return PTR_ERR(dentry);
 
-	if (!IS_ACL(path.dentry->d_inode))
+	if (!IS_POSIXACL(path.dentry->d_inode))
 		mode &= ~current_umask();
 	error = security_path_mkdir(&path, dentry, mode);
 	if (!error)
@@ -3562,7 +3522,7 @@ void dentry_unhash(struct dentry *dentry)
 
 int vfs_rmdir(struct inode *dir, struct dentry *dentry)
 {
-	int error = may_delete(dir, dentry, 1, 0);
+	int error = may_delete(dir, dentry, 1);
 
 	if (error)
 		return error;
@@ -3680,7 +3640,7 @@ SYSCALL_DEFINE1(rmdir, const char __user *, pathname)
 int vfs_unlink(struct inode *dir, struct dentry *dentry, struct inode **delegated_inode)
 {
 	struct inode *target = dentry->d_inode;
-	int error = may_delete(dir, dentry, 0, 0);
+	int error = may_delete(dir, dentry, 0);
 
 	if (error)
 		return error;
@@ -3809,7 +3769,7 @@ SYSCALL_DEFINE1(unlink, const char __user *, pathname)
 
 int vfs_symlink(struct inode *dir, struct dentry *dentry, const char *oldname)
 {
-	int error = may_create(dir, dentry, 0);
+	int error = may_create(dir, dentry);
 
 	if (error)
 		return error;
@@ -3891,7 +3851,7 @@ int vfs_link(struct dentry *old_dentry, struct inode *dir, struct dentry *new_de
 	if (!inode)
 		return -ENOENT;
 
-	error = may_create(dir, new_dentry, S_ISDIR(inode->i_mode));
+	error = may_create(dir, new_dentry);
 	if (error)
 		return error;
 
@@ -4169,14 +4129,14 @@ int vfs_rename(struct inode *old_dir, struct dentry *old_dentry,
 	if (old_dentry->d_inode == new_dentry->d_inode)
  		return 0;
  
-	error = may_delete(old_dir, old_dentry, is_dir, 0);
+	error = may_delete(old_dir, old_dentry, is_dir);
 	if (error)
 		return error;
 
 	if (!new_dentry->d_inode)
-		error = may_create(new_dir, new_dentry, is_dir);
+		error = may_create(new_dir, new_dentry);
 	else
-		error = may_delete(new_dir, new_dentry, is_dir, 1);
+		error = may_delete(new_dir, new_dentry, is_dir);
 	if (error)
 		return error;
 

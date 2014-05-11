@@ -7,7 +7,6 @@
 #include <linux/ptrace.h>
 #include <linux/slab.h>
 #include <linux/seq_file.h>
-#include <linux/magic.h>
 #include "internal.h"
 
 /*

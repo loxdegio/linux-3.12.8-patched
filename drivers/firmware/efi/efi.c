@@ -32,6 +32,9 @@ struct efi __read_mostly efi = {
 	.hcdp       = EFI_INVALID_TABLE_ADDR,
 	.uga        = EFI_INVALID_TABLE_ADDR,
 	.uv_systab  = EFI_INVALID_TABLE_ADDR,
+	.fw_vendor  = EFI_INVALID_TABLE_ADDR,
+	.runtime    = EFI_INVALID_TABLE_ADDR,
+	.config_table  = EFI_INVALID_TABLE_ADDR,
 };
 EXPORT_SYMBOL(efi);
 
@@ -71,13 +74,49 @@ static ssize_t systab_show(struct kobject *kobj,
 static struct kobj_attribute efi_attr_systab =
 			__ATTR(systab, 0400, systab_show, NULL);
 
+#define EFI_FIELD(var) efi.var
+
+#define EFI_ATTR_SHOW(name) \
+static ssize_t name##_show(struct kobject *kobj, \
+				struct kobj_attribute *attr, char *buf) \
+{ \
+	return sprintf(buf, "0x%lx\n", EFI_FIELD(name)); \
+}
+
+EFI_ATTR_SHOW(fw_vendor);
+EFI_ATTR_SHOW(runtime);
+EFI_ATTR_SHOW(config_table);
+
+static struct kobj_attribute efi_attr_fw_vendor = __ATTR_RO(fw_vendor);
+static struct kobj_attribute efi_attr_runtime = __ATTR_RO(runtime);
+static struct kobj_attribute efi_attr_config_table = __ATTR_RO(config_table);
+
 static struct attribute *efi_subsys_attrs[] = {
 	&efi_attr_systab.attr,
-	NULL,	/* maybe more in the future? */
+	&efi_attr_fw_vendor.attr,
+	&efi_attr_runtime.attr,
+	&efi_attr_config_table.attr,
+	NULL,
 };
+
+static umode_t efi_attr_is_visible(struct kobject *kobj,
+				   struct attribute *attr, int n)
+{
+	umode_t mode = attr->mode;
+
+	if (attr == &efi_attr_fw_vendor.attr)
+		return (efi.fw_vendor == EFI_INVALID_TABLE_ADDR) ? 0 : mode;
+	else if (attr == &efi_attr_runtime.attr)
+		return (efi.runtime == EFI_INVALID_TABLE_ADDR) ? 0 : mode;
+	else if (attr == &efi_attr_config_table.attr)
+		return (efi.config_table == EFI_INVALID_TABLE_ADDR) ? 0 : mode;
+
+	return mode;
+}
 
 static struct attribute_group efi_subsys_attr_group = {
 	.attrs = efi_subsys_attrs,
+	.is_visible = efi_attr_is_visible,
 };
 
 static struct efivars generic_efivars;
@@ -128,6 +167,10 @@ static int __init efisubsys_init(void)
 		goto err_unregister;
 	}
 
+	error = efi_runtime_map_init(efi_kobj);
+	if (error)
+		goto err_remove_group;
+
 	/* and the standard mountpoint for efivarfs */
 	efivars_kobj = kobject_create_and_add("efivars", efi_kobj);
 	if (!efivars_kobj) {
@@ -157,7 +200,6 @@ subsys_initcall(efisubsys_init);
  */
 void __iomem *efi_lookup_mapped_addr(u64 phys_addr)
 {
-#ifndef CONFIG_XEN
 	struct efi_memory_map *map;
 	void *p;
 	map = efi.memmap;
@@ -180,7 +222,6 @@ void __iomem *efi_lookup_mapped_addr(u64 phys_addr)
 			return (__force void __iomem *)(unsigned long)phys_addr;
 		}
 	}
-#endif
 	return NULL;
 }
 
@@ -220,24 +261,12 @@ static __init int match_config_table(efi_guid_t *guid,
 	return 0;
 }
 
-int __init efi_config_init(
-#ifdef CONFIG_XEN
-			   u64 tables, unsigned int nr_tables,
-#endif
-			   efi_config_table_type_t *arch_tables)
+int __init efi_config_init(efi_config_table_type_t *arch_tables)
 {
-#ifndef CONFIG_XEN
-	u64 tables = efi.systab->tables;
-	unsigned int nr_tables = efi.systab->nr_tables;
-	const bool efi_64bit = efi_enabled(EFI_64BIT);
-#else
-	const bool efi_64bit = true;
-#define early_memremap early_ioremap
-#endif
 	void *config_tables, *tablep;
 	int i, sz;
 
-	if (efi_64bit)
+	if (efi_enabled(EFI_64BIT))
 		sz = sizeof(efi_config_table_64_t);
 	else
 		sz = sizeof(efi_config_table_32_t);
@@ -245,7 +274,8 @@ int __init efi_config_init(
 	/*
 	 * Let's see what config tables the firmware passed to us.
 	 */
-	config_tables = early_memremap(tables, nr_tables * sz);
+	config_tables = early_memremap(efi.systab->tables,
+				       efi.systab->nr_tables * sz);
 	if (config_tables == NULL) {
 		pr_err("Could not map Configuration table!\n");
 		return -ENOMEM;
@@ -253,11 +283,11 @@ int __init efi_config_init(
 
 	tablep = config_tables;
 	pr_info("");
-	for (i = 0; i < nr_tables; i++) {
+	for (i = 0; i < efi.systab->nr_tables; i++) {
 		efi_guid_t guid;
 		unsigned long table;
 
-		if (efi_64bit) {
+		if (efi_enabled(EFI_64BIT)) {
 			u64 table64;
 			guid = ((efi_config_table_64_t *)tablep)->guid;
 			table64 = ((efi_config_table_64_t *)tablep)->table;
@@ -266,7 +296,8 @@ int __init efi_config_init(
 			if (table64 >> 32) {
 				pr_cont("\n");
 				pr_err("Table located above 4GB, disabling EFI.\n");
-				early_iounmap(config_tables, nr_tables * sz);
+				early_iounmap(config_tables,
+					       efi.systab->nr_tables * sz);
 				return -EINVAL;
 			}
 #endif
@@ -281,7 +312,6 @@ int __init efi_config_init(
 		tablep += sz;
 	}
 	pr_cont("\n");
-	early_iounmap(config_tables, nr_tables * sz);
+	early_iounmap(config_tables, efi.systab->nr_tables * sz);
 	return 0;
-#undef early_memremap
 }

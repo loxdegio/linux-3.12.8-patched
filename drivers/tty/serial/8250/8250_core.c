@@ -92,8 +92,6 @@ static unsigned int skip_txen_test; /* force skip of txen test at init time */
 #define CONFIG_SERIAL_MANY_PORTS 1
 #endif
 
-#define arch_8250_sysrq_via_ctrl_o(a,b) 0
-
 /*
  * HUB6 is always on.  This will be removed once the header
  * files have been cleaned.
@@ -1360,11 +1358,7 @@ serial8250_rx_chars(struct uart_8250_port *up, unsigned char lsr)
 
 	do {
 		if (likely(lsr & UART_LSR_DR))
-		{
 			ch = serial_in(up, UART_RX);
-			if (arch_8250_sysrq_via_ctrl_o(ch, &up->port))
-				goto ignore_char;
-		}
 		else
 			/*
 			 * Intel 82571 has a Serial Over Lan device that will
@@ -2437,6 +2431,24 @@ serial8250_do_set_termios(struct uart_port *port, struct ktermios *termios,
 		serial_port_out(port, UART_LCR, cval | UART_LCR_DLAB);
 
 	serial_dl_write(up, quot);
+
+	/*
+	 * XR17V35x UARTs have an extra fractional divisor register (DLD)
+	 *
+	 * We need to recalculate all of the registers, because DLM and DLL
+	 * are already rounded to a whole integer.
+	 *
+	 * When recalculating we use a 32x clock instead of a 16x clock to
+	 * allow 1-bit for rounding in the fractional part.
+	 */
+	if (up->port.type == PORT_XR17V35X) {
+		unsigned int baud_x32 = (port->uartclk * 2) / baud;
+		u16 quot = baud_x32 / 32;
+		u8 quot_frac = DIV_ROUND_CLOSEST(baud_x32 % 32, 2);
+
+		serial_dl_write(up, quot);
+		serial_port_out(port, 0x2, quot_frac & 0xf);
+	}
 
 	/*
 	 * LCR DLAB must be set to enable 64-byte FIFO mode. If the FCR

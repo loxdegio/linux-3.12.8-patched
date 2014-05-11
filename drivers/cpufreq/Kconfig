@@ -2,7 +2,6 @@ menu "CPU Frequency scaling"
 
 config CPU_FREQ
 	bool "CPU Frequency scaling"
-	depends on !PROCESSOR_EXTERNAL_CONTROL
 	help
 	  CPU Frequency scaling allows you to change the clock speed of 
 	  CPUs on the fly. This is a nice method to save power, because 
@@ -20,6 +19,10 @@ if CPU_FREQ
 
 config CPU_FREQ_GOV_COMMON
 	bool
+
+config CPU_FREQ_BOOST_SW
+	bool
+	depends on THERMAL
 
 config CPU_FREQ_STAT
 	tristate "CPU frequency translation statistics"
@@ -182,7 +185,8 @@ config CPU_FREQ_GOV_CONSERVATIVE
 
 config GENERIC_CPUFREQ_CPU0
 	tristate "Generic CPU0 cpufreq driver"
-	depends on HAVE_CLK && REGULATOR && PM_OPP && OF
+	depends on HAVE_CLK && REGULATOR && OF && THERMAL && CPU_THERMAL
+	select PM_OPP
 	help
 	  This adds a generic cpufreq driver for CPU0 frequency management.
 	  It supports both uniprocessor (UP) and symmetric multiprocessor (SMP)

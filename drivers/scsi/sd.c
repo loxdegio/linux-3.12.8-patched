@@ -110,7 +110,7 @@ static int sd_suspend_runtime(struct device *);
 static int sd_resume(struct device *);
 static void sd_rescan(struct device *);
 static int sd_done(struct scsi_cmnd *);
-static int sd_eh_action(struct scsi_cmnd *, unsigned char *, int, int);
+static int sd_eh_action(struct scsi_cmnd *, int);
 static void sd_read_capacity(struct scsi_disk *sdkp, unsigned char *buffer);
 static void scsi_disk_release(struct device *cdev);
 static void sd_print_sense_hdr(struct scsi_disk *, struct scsi_sense_hdr *);
@@ -801,7 +801,7 @@ static int sd_setup_write_same_cmnd(struct scsi_device *sdp, struct request *rq)
 	if (sdkp->device->no_write_same)
 		return BLKPREP_KILL;
 
-	BUG_ON(bio_offset(bio) || bio_iovec(bio)->bv_len != sdp->sector_size);
+	BUG_ON(bio_offset(bio) || bio_iovec(bio).bv_len != sdp->sector_size);
 
 	sector >>= ilog2(sdp->sector_size) - 9;
 	nr_sectors >>= ilog2(sdp->sector_size) - 9;
@@ -1463,8 +1463,8 @@ static int sd_sync_cache(struct scsi_disk *sdkp)
 			sd_print_sense_hdr(sdkp, &sshdr);
 		/* we need to evaluate the error return  */
 		if (scsi_sense_valid(&sshdr) &&
-			/* 0x3a is medium not present */
-			sshdr.asc == 0x3a)
+			(sshdr.asc == 0x3a ||	/* medium not present */
+			 sshdr.asc == 0x20))	/* invalid command */
 				/* this is no error here */
 				return 0;
 
@@ -1551,23 +1551,23 @@ static const struct block_device_operations sd_fops = {
 /**
  *	sd_eh_action - error handling callback
  *	@scmd:		sd-issued command that has failed
- *	@eh_cmnd:	The command that was sent during error handling
- *	@eh_cmnd_len:	Length of eh_cmnd in bytes
  *	@eh_disp:	The recovery disposition suggested by the midlayer
  *
- *	This function is called by the SCSI midlayer upon completion of
- *	an error handling command (TEST UNIT READY, START STOP UNIT,
- *	etc.) The command sent to the device by the error handler is
- *	stored in eh_cmnd. The result of sending the eh command is
- *	passed in eh_disp.
+ *	This function is called by the SCSI midlayer upon completion of an
+ *	error test command (currently TEST UNIT READY). The result of sending
+ *	the eh command is passed in eh_disp.  We're looking for devices that
+ *	fail medium access commands but are OK with non access commands like
+ *	test unit ready (so wrongly see the device as having a successful
+ *	recovery)
  **/
-static int sd_eh_action(struct scsi_cmnd *scmd, unsigned char *eh_cmnd,
-			int eh_cmnd_len, int eh_disp)
+static int sd_eh_action(struct scsi_cmnd *scmd, int eh_disp)
 {
 	struct scsi_disk *sdkp = scsi_disk(scmd->request->rq_disk);
 
 	if (!scsi_device_online(scmd->device) ||
-	    !scsi_medium_access_command(scmd))
+	    !scsi_medium_access_command(scmd) ||
+	    host_byte(scmd->result) != DID_TIME_OUT ||
+	    eh_disp != SUCCESS)
 		return eh_disp;
 
 	/*
@@ -1577,9 +1577,7 @@ static int sd_eh_action(struct scsi_cmnd *scmd, unsigned char *eh_cmnd,
 	 * process of recovering or has it suffered an internal failure
 	 * that prevents access to the storage medium.
 	 */
-	if (host_byte(scmd->result) == DID_TIME_OUT && eh_disp == SUCCESS &&
-	    eh_cmnd_len && eh_cmnd[0] == TEST_UNIT_READY)
-		sdkp->medium_access_timed_out++;
+	sdkp->medium_access_timed_out++;
 
 	/*
 	 * If the device keeps failing read/write commands but TEST UNIT
@@ -1628,7 +1626,7 @@ static unsigned int sd_completed_bytes(struct scsi_cmnd *scmd)
 		end_lba <<= 1;
 	} else {
 		/* be careful ... don't want any overflows */
-		u64 factor = scmd->device->sector_size / 512;
+		unsigned int factor = scmd->device->sector_size / 512;
 		do_div(start_lba, factor);
 		do_div(end_lba, factor);
 	}
@@ -1847,7 +1845,8 @@ sd_spinup_disk(struct scsi_disk *sdkp)
 		 * Yes, this sense key/ASC combination shouldn't
 		 * occur here.  It's characteristic of these devices.
 		 */
-		} else if (sshdr.sense_key == UNIT_ATTENTION &&
+		} else if (sense_valid &&
+				sshdr.sense_key == UNIT_ATTENTION &&
 				sshdr.asc == 0x28) {
 			if (!spintime) {
 				spintime_expire = jiffies + 5 * HZ;
@@ -2896,20 +2895,6 @@ static void sd_probe_async(void *data, async_cookie_t cookie)
 	put_device(&sdkp->dev);
 }
 
-static int sd_get_index(int *index)
-{
-	int error = -ENOMEM;
-	do {
-		if (!ida_pre_get(&sd_index_ida, GFP_KERNEL))
-			break;
-
-		spin_lock(&sd_index_lock);
-		error = ida_get_new(&sd_index_ida, index);
-		spin_unlock(&sd_index_lock);
-	} while (error == -EAGAIN);
-
-	return error;
-}
 /**
  *	sd_probe - called during driver initialization and whenever a
  *	new scsi device is attached to the system. It is called once
@@ -2952,7 +2937,15 @@ static int sd_probe(struct device *dev)
 	if (!gd)
 		goto out_free;
 
-	error = sd_get_index(&index);
+	do {
+		if (!ida_pre_get(&sd_index_ida, GFP_KERNEL))
+			goto out_put;
+
+		spin_lock(&sd_index_lock);
+		error = ida_get_new(&sd_index_ida, &index);
+		spin_unlock(&sd_index_lock);
+	} while (error == -EAGAIN);
+
 	if (error) {
 		sdev_printk(KERN_WARNING, sdp, "sd_probe: memory exhausted.\n");
 		goto out_put;
@@ -3193,42 +3186,6 @@ done:
 	return ret;
 }
 
-/*
-* Each major represents 16 disks. A minor is used for the disk itself and 15
-* partitions. Mark each disk busy so that sd_probe can not reclaim this major.
-*/
-static int __init init_sd_ida(int *error)
-{
-	int *index, i, j, err;
-
-	index = kmalloc(SD_MAJORS * (256 / SD_MINORS) * sizeof(int), GFP_KERNEL);
-	if (!index)
-		return -ENOMEM;
-
-	/* Mark minors for all majors as busy */
-	for (i = 0; i < SD_MAJORS; i++)
-	{
-		for (j = 0; j < (256 / SD_MINORS); j++) {
-			err = sd_get_index(&index[i * (256 / SD_MINORS) + j]);
-			if (err) {
-				kfree(index);
-				return err;
-			}
-		}
-	}
-
-	/* Mark minors for claimed majors as free */
-	for (i = 0; i < SD_MAJORS; i++)
-	{
-		if (error[i])
-			continue;
-		for (j = 0; j < (256 / SD_MINORS); j++)
-			ida_remove(&sd_index_ida, index[i * (256 / SD_MINORS) + j]);
-	}
-	kfree(index);
-	return 0;
-}
-
 /**
  *	init_sd - entry point for this driver (both when built in or when
  *	a module).
@@ -3238,26 +3195,19 @@ static int __init init_sd_ida(int *error)
 static int __init init_sd(void)
 {
 	int majors = 0, i, err;
-	int error[SD_MAJORS];
 
 	SCSI_LOG_HLQUEUE(3, printk("init_sd: sd driver entry point\n"));
 
 	for (i = 0; i < SD_MAJORS; i++) {
-		error[i] = register_blkdev(sd_major(i), "sd");
-		if (error[i] == 0)
-			majors++;
+		if (register_blkdev(sd_major(i), "sd") != 0)
+			continue;
+		majors++;
 		blk_register_region(sd_major(i), SD_MINORS, NULL,
 				    sd_default_probe, NULL, NULL);
 	}
 
 	if (!majors)
 		return -ENODEV;
-
-	if (majors < SD_MAJORS) {
-		err = init_sd_ida(error);
-		if (err)
-			return err;
-	}
 
 	err = class_register(&sd_disk_class);
 	if (err)

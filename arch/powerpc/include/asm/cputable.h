@@ -90,6 +90,18 @@ struct cpu_spec {
 	 * if the error is fatal, 1 if it was fully recovered and 0 to
 	 * pass up (not CPU originated) */
 	int		(*machine_check)(struct pt_regs *regs);
+
+	/*
+	 * Processor specific early machine check handler which is
+	 * called in real mode to handle SLB and TLB errors.
+	 */
+	long		(*machine_check_early)(struct pt_regs *regs);
+
+	/*
+	 * Processor specific routine to flush tlbs.
+	 */
+	void		(*flush_tlb)(unsigned long inval_selector);
+
 };
 
 extern struct cpu_spec		*cur_cpu_spec;
@@ -99,8 +111,6 @@ extern unsigned int __start___ftr_fixup, __stop___ftr_fixup;
 extern struct cpu_spec *identify_cpu(unsigned long offset, unsigned int pvr);
 extern void do_feature_fixups(unsigned long value, void *fixup_start,
 			      void *fixup_end);
-extern void relocate_fixup_entry(void *fixup_start, void *fixup_end,
-				 void *old_addr, void *new_addr);
 
 extern const char *powerpc_base_platform;
 

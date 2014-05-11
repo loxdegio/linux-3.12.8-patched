@@ -155,7 +155,6 @@ static int alloc_targets(struct dm_table *t, unsigned int num)
 {
 	sector_t *n_highs;
 	struct dm_target *n_targets;
-	int n = t->num_targets;
 
 	/*
 	 * Allocate both the target array and offset array at once.
@@ -169,12 +168,7 @@ static int alloc_targets(struct dm_table *t, unsigned int num)
 
 	n_targets = (struct dm_target *) (n_highs + num);
 
-	if (n) {
-		memcpy(n_highs, t->highs, sizeof(*n_highs) * n);
-		memcpy(n_targets, t->targets, sizeof(*n_targets) * n);
-	}
-
-	memset(n_highs + n, -1, sizeof(*n_highs) * (num - n));
+	memset(n_highs, -1, sizeof(*n_highs) * num);
 	vfree(t->highs);
 
 	t->num_allocated = num;
@@ -258,17 +252,6 @@ void dm_table_destroy(struct dm_table *t)
 	dm_free_md_mempools(t->mempools);
 
 	kfree(t);
-}
-
-/*
- * Checks to see if we need to extend highs or targets.
- */
-static inline int check_space(struct dm_table *t)
-{
-	if (t->num_targets >= t->num_allocated)
-		return alloc_targets(t, t->num_allocated * 2);
-
-	return 0;
 }
 
 /*
@@ -407,18 +390,14 @@ static int upgrade_mode(struct dm_dev_internal *dd, fmode_t new_mode,
 
 	dd_new = dd_old = *dd;
 
-	dd_new.dm_dev.mode = new_mode;
+	dd_new.dm_dev.mode |= new_mode;
 	dd_new.dm_dev.bdev = NULL;
 
 	r = open_dev(&dd_new, dd->dm_dev.bdev->bd_dev, md);
-	if (r == -EROFS) {
-		dd_new.dm_dev.mode &= ~FMODE_WRITE;
-		r = open_dev(&dd_new, dd->dm_dev.bdev->bd_dev, md);
-	}
-	if (!r)
+	if (r)
 		return r;
 
-	dd->dm_dev.mode = new_mode;
+	dd->dm_dev.mode |= new_mode;
 	close_dev(&dd_old, md);
 
 	return 0;
@@ -464,25 +443,17 @@ int dm_get_device(struct dm_target *ti, const char *path, fmode_t mode,
 		dd->dm_dev.mode = mode;
 		dd->dm_dev.bdev = NULL;
 
-		r = open_dev(dd, dev, t->md);
-		if (r == -EROFS) {
-			dd->dm_dev.mode &= ~FMODE_WRITE;
-			r = open_dev(dd, dev, t->md);
-		}
-		if (r) {
+		if ((r = open_dev(dd, dev, t->md))) {
 			kfree(dd);
 			return r;
 		}
-
-		if (dd->dm_dev.mode != mode)
-			t->mode = dd->dm_dev.mode;
 
 		format_dev_t(dd->dm_dev.name, dev);
 
 		atomic_set(&dd->count, 0);
 		list_add(&dd->list, &t->devices);
 
-	} else if (dd->dm_dev.mode != mode) {
+	} else if (dd->dm_dev.mode != (mode | dd->dm_dev.mode)) {
 		r = upgrade_mode(dd, mode, t->md);
 		if (r)
 			return r;
@@ -743,8 +714,7 @@ int dm_table_add_target(struct dm_table *t, const char *type,
 		return -EINVAL;
 	}
 
-	if ((r = check_space(t)))
-		return r;
+	BUG_ON(t->num_targets >= t->num_allocated);
 
 	tgt = t->targets + t->num_targets;
 	memset(tgt, 0, sizeof(*tgt));

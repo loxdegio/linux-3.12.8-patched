@@ -11,7 +11,7 @@
 #include <linux/slab.h>
 #include "agp.h"
 
-#define AMD_MMBASE	0x14
+#define AMD_MMBASE_BAR	1
 #define AMD_APSIZE	0xac
 #define AMD_MODECNTL	0xb0
 #define AMD_MODECNTL2	0xb2
@@ -126,7 +126,6 @@ static int amd_create_gatt_table(struct agp_bridge_data *bridge)
 	unsigned long __iomem *cur_gatt;
 	unsigned long addr;
 	int retval;
-	u32 temp;
 	int i;
 
 	value = A_SIZE_LVL2(agp_bridge->current_size);
@@ -142,20 +141,19 @@ static int amd_create_gatt_table(struct agp_bridge_data *bridge)
 
 	agp_bridge->gatt_table_real = (u32 *)page_dir.real;
 	agp_bridge->gatt_table = (u32 __iomem *)page_dir.remapped;
-	agp_bridge->gatt_bus_addr = virt_to_gart(page_dir.real);
+	agp_bridge->gatt_bus_addr = virt_to_phys(page_dir.real);
 
 	/* Get the address for the gart region.
 	 * This is a bus address even on the alpha, b/c its
 	 * used to program the agp master not the cpu
 	 */
 
-	pci_read_config_dword(agp_bridge->dev, AGP_APBASE, &temp);
-	addr = (temp & PCI_BASE_ADDRESS_MEM_MASK);
+	addr = pci_bus_address(agp_bridge->dev, AGP_APERTURE_BAR);
 	agp_bridge->gart_bus_addr = addr;
 
 	/* Calculate the agp offset */
 	for (i = 0; i < value->num_entries / 1024; i++, addr += 0x00400000) {
-		writel(virt_to_gart(amd_irongate_private.gatt_pages[i]->real) | 1,
+		writel(virt_to_phys(amd_irongate_private.gatt_pages[i]->real) | 1,
 			page_dir.remapped+GET_PAGE_DIR_OFF(addr));
 		readl(page_dir.remapped+GET_PAGE_DIR_OFF(addr));	/* PCI Posting. */
 	}
@@ -207,6 +205,7 @@ static int amd_irongate_fetch_size(void)
 static int amd_irongate_configure(void)
 {
 	struct aper_size_info_lvl2 *current_size;
+	phys_addr_t reg;
 	u32 temp;
 	u16 enable_reg;
 
@@ -214,9 +213,8 @@ static int amd_irongate_configure(void)
 
 	if (!amd_irongate_private.registers) {
 		/* Get the memory mapped registers */
-		pci_read_config_dword(agp_bridge->dev, AMD_MMBASE, &temp);
-		temp = (temp & PCI_BASE_ADDRESS_MEM_MASK);
-		amd_irongate_private.registers = (volatile u8 __iomem *) ioremap(temp, 4096);
+		reg = pci_resource_start(agp_bridge->dev, AMD_MMBASE_BAR);
+		amd_irongate_private.registers = (volatile u8 __iomem *) ioremap(reg, 4096);
 		if (!amd_irongate_private.registers)
 			return -ENOMEM;
 	}

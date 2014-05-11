@@ -55,7 +55,6 @@ static const char * const sym_regex_kernel[S_NSYMTYPES] = {
 	"(__iommu_table|__apicdrivers|__smp_locks)(|_end)|"
 	"__(start|end)_pci_.*|"
 	"__(start|end)_builtin_fw|"
-	"__(start|end)_unwind(|_hdr)|"
 	"__(start|stop)___ksymtab(|_gpl|_unused|_unused_gpl|_gpl_future)|"
 	"__(start|stop)___kcrctab(|_gpl|_unused|_unused_gpl|_gpl_future)|"
 	"__(start|stop)___param|"
@@ -723,15 +722,25 @@ static void percpu_init(void)
 
 /*
  * Check to see if a symbol lies in the .data..percpu section.
- * For some as yet not understood reason the "__init_begin"
- * symbol which immediately preceeds the .data..percpu section
- * also shows up as it it were part of it so we do an explict
- * check for that symbol name and ignore it.
+ *
+ * The linker incorrectly associates some symbols with the
+ * .data..percpu section so we also need to check the symbol
+ * name to make sure that we classify the symbol correctly.
+ *
+ * The GNU linker incorrectly associates:
+ *	__init_begin
+ *	__per_cpu_load
+ *
+ * The "gold" linker incorrectly associates:
+ *	init_per_cpu__irq_stack_union
+ *	init_per_cpu__gdt_page
  */
 static int is_percpu_sym(ElfW(Sym) *sym, const char *symname)
 {
 	return (sym->st_shndx == per_cpu_shndx) &&
-		strcmp(symname, "__init_begin");
+		strcmp(symname, "__init_begin") &&
+		strcmp(symname, "__per_cpu_load") &&
+		strncmp(symname, "init_per_cpu_", 13);
 }
 
 
@@ -1016,6 +1025,29 @@ static void emit_relocs(int as_text, int use_real_mode)
 	}
 }
 
+/*
+ * As an aid to debugging problems with different linkers
+ * print summary information about the relocs.
+ * Since different linkers tend to emit the sections in
+ * different orders we use the section names in the output.
+ */
+static int do_reloc_info(struct section *sec, Elf_Rel *rel, ElfW(Sym) *sym,
+				const char *symname)
+{
+	printf("%s\t%s\t%s\t%s\n",
+		sec_name(sec->shdr.sh_info),
+		rel_type(ELF_R_TYPE(rel->r_info)),
+		symname,
+		sec_name(sym->st_shndx));
+	return 0;
+}
+
+static void print_reloc_info(void)
+{
+	printf("reloc section\treloc type\tsymbol\tsymbol section\n");
+	walk_relocs(do_reloc_info);
+}
+
 #if ELF_BITS == 64
 # define process process_64
 #else
@@ -1023,7 +1055,8 @@ static void emit_relocs(int as_text, int use_real_mode)
 #endif
 
 void process(FILE *fp, int use_real_mode, int as_text,
-	     int show_absolute_syms, int show_absolute_relocs)
+	     int show_absolute_syms, int show_absolute_relocs,
+	     int show_reloc_info)
 {
 	regex_init(use_real_mode);
 	read_ehdr(fp);
@@ -1039,6 +1072,10 @@ void process(FILE *fp, int use_real_mode, int as_text,
 	}
 	if (show_absolute_relocs) {
 		print_absolute_relocs();
+		return;
+	}
+	if (show_reloc_info) {
+		print_reloc_info();
 		return;
 	}
 	emit_relocs(as_text, use_real_mode);

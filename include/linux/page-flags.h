@@ -122,15 +122,8 @@ enum pageflags {
 	PG_fscache = PG_private_2,	/* page backed by cache */
 
 	/* XEN */
-#if defined(CONFIG_XEN)
-	PG_pinned = PG_locked,	/* Cannot alias with PG_owner_priv_1 since
-				 * bad_page() checks should include this bit.
-				 * Should not use PG_arch_1 as that may have
-				 * a different purpose elsewhere. */
-#elif defined(CONFIG_PARAVIRT_XEN)
 	PG_pinned = PG_owner_priv_1,
 	PG_savepinned = PG_dirty,
-#endif
 
 	/* SLOB */
 	PG_slob_free = PG_private,
@@ -212,12 +205,8 @@ PAGEFLAG(Active, active) __CLEARPAGEFLAG(Active, active)
 	TESTCLEARFLAG(Active, active)
 __PAGEFLAG(Slab, slab)
 PAGEFLAG(Checked, checked)		/* Used by some filesystems */
-#if defined(CONFIG_XEN) || defined(CONFIG_PARAVIRT_XEN)
 PAGEFLAG(Pinned, pinned) TESTSCFLAG(Pinned, pinned)	/* Xen */
-#endif
-#ifdef CONFIG_PARAVIRT_XEN
 PAGEFLAG(SavePinned, savepinned);			/* Xen */
-#endif
 PAGEFLAG(Reserved, reserved) __CLEARPAGEFLAG(Reserved, reserved)
 PAGEFLAG(SwapBacked, swapbacked) __CLEARPAGEFLAG(SwapBacked, swapbacked)
 
@@ -240,9 +229,9 @@ PAGEFLAG(OwnerPriv1, owner_priv_1) TESTCLEARFLAG(OwnerPriv1, owner_priv_1)
 TESTPAGEFLAG(Writeback, writeback) TESTSCFLAG(Writeback, writeback)
 PAGEFLAG(MappedToDisk, mappedtodisk)
 
-/* PG_readahead is only used for file reads; PG_reclaim is only for writes */
+/* PG_readahead is only used for reads; PG_reclaim is only for writes */
 PAGEFLAG(Reclaim, reclaim) TESTCLEARFLAG(Reclaim, reclaim)
-PAGEFLAG(Readahead, reclaim)		/* Reminder to do async read-ahead */
+PAGEFLAG(Readahead, reclaim) TESTCLEARFLAG(Readahead, reclaim)
 
 PAGEFLAG(ReadaheadUnused, readaheadunused)
 
@@ -327,28 +316,6 @@ static inline void SetPageUptodate(struct page *page)
 }
 
 CLEARPAGEFLAG(Uptodate, uptodate)
-
-#ifdef CONFIG_XEN
-TESTPAGEFLAG(Foreign, foreign)
-static inline void SetPageForeign(struct page *page,
-				  void (*dtor)(struct page *, unsigned int))
-{
-	BUG_ON(!dtor);
-	set_bit(PG_foreign, &page->flags);
-	page->index = (long)dtor;
-}
-static inline void ClearPageForeign(struct page *page)
-{
-	clear_bit(PG_foreign, &page->flags);
-	page->index = 0;
-}
-static inline void PageForeignDestructor(struct page *page, unsigned int order)
-{
-	((void (*)(struct page *, unsigned int))page->index)(page, order);
-}
-/*PAGEFLAG(Netback, netback)*/
-PAGEFLAG(Blkback, blkback)
-#endif
 
 extern void cancel_dirty_page(struct page *page, unsigned int account_size);
 
@@ -448,7 +415,7 @@ static inline void ClearPageCompound(struct page *page)
  */
 static inline int PageTransHuge(struct page *page)
 {
-	VM_BUG_ON(PageTail(page));
+	VM_BUG_ON_PAGE(PageTail(page), page);
 	return PageHead(page);
 }
 
@@ -496,25 +463,25 @@ static inline int PageTransTail(struct page *page)
  */
 static inline int PageSlabPfmemalloc(struct page *page)
 {
-	VM_BUG_ON(!PageSlab(page));
+	VM_BUG_ON_PAGE(!PageSlab(page), page);
 	return PageActive(page);
 }
 
 static inline void SetPageSlabPfmemalloc(struct page *page)
 {
-	VM_BUG_ON(!PageSlab(page));
+	VM_BUG_ON_PAGE(!PageSlab(page), page);
 	SetPageActive(page);
 }
 
 static inline void __ClearPageSlabPfmemalloc(struct page *page)
 {
-	VM_BUG_ON(!PageSlab(page));
+	VM_BUG_ON_PAGE(!PageSlab(page), page);
 	__ClearPageActive(page);
 }
 
 static inline void ClearPageSlabPfmemalloc(struct page *page)
 {
-	VM_BUG_ON(!PageSlab(page));
+	VM_BUG_ON_PAGE(!PageSlab(page), page);
 	ClearPageActive(page);
 }
 
@@ -530,12 +497,6 @@ static inline void ClearPageSlabPfmemalloc(struct page *page)
 #define __PG_COMPOUND_LOCK		0
 #endif
 
-#ifndef CONFIG_XEN
-# define __PG_XEN		0
-#else
-# define __PG_XEN		(1 << PG_foreign)
-#endif
-
 /*
  * Flags checked when a page is freed.  Pages being freed should not have
  * these flags set.  It they are, there is a problem.
@@ -546,7 +507,7 @@ static inline void ClearPageSlabPfmemalloc(struct page *page)
 	 1 << PG_writeback | 1 << PG_reserved | \
 	 1 << PG_slab	 | 1 << PG_swapcache | 1 << PG_active | \
 	 1 << PG_unevictable | __PG_MLOCKED | __PG_HWPOISON | \
-	 __PG_COMPOUND_LOCK | __PG_XEN)
+	 __PG_COMPOUND_LOCK)
 
 /*
  * Flags checked when a page is prepped for return by the page allocator.

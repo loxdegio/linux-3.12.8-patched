@@ -5,6 +5,7 @@
 #include <linux/init.h>
 #include <linux/kern_levels.h>
 #include <linux/linkage.h>
+#include <linux/cache.h>
 
 extern const char linux_banner[];
 extern const char linux_proc_banner[];
@@ -86,6 +87,13 @@ struct va_format {
  * it to hardware vendor instead of LKML or software vendor.
  */
 #define HW_ERR		"[Hardware Error]: "
+
+/*
+ * DEPRECATED
+ * Add this to a message whenever you want to warn user space about the use
+ * of a deprecated aspect of an API so they can stop using it
+ */
+#define DEPRECATED	"[Deprecated]: "
 
 /*
  * Dummy printk for disabled debugging statements to use whilst maintaining
@@ -206,47 +214,23 @@ extern asmlinkage void dump_stack(void) __cold;
 #define pr_fmt(fmt) fmt
 #endif
 
-#if defined(__KMSG_CHECKER) && defined(KMSG_COMPONENT)
-
-/* generate magic string for scripts/kmsg-doc to parse */
-#define pr_printk_hash(level, format, ...) \
-	__KMSG_PRINT(level _FMT_ format _ARGS_ #__VA_ARGS__ _END_)
-#define __pr_printk_hash pr_printk_hash
-
-#elif defined(CONFIG_KMSG_IDS) && defined(KMSG_COMPONENT)
-
-int printk_hash(const char *, const char *, ...);
-#define pr_printk_hash(level, format, ...) \
-	printk_hash(level KMSG_COMPONENT ".%06x" ": ", format, ##__VA_ARGS__)
-#define __pr_printk_hash(level, format, ...) \
-	printk_hash(level, format, ##__VA_ARGS__)
-
-#else /* !defined(CONFIG_KMSG_IDS) */
-
-#define pr_printk_hash(level, format, ...) \
-	printk(level pr_fmt(format), ##__VA_ARGS__)
-#define __pr_printk_hash(level, format, ...) \
-	printk(level format, ##__VA_ARGS__)
-
-#endif
-
 #define pr_emerg(fmt, ...) \
-	pr_printk_hash(KERN_EMERG, fmt, ##__VA_ARGS__)
+	printk(KERN_EMERG pr_fmt(fmt), ##__VA_ARGS__)
 #define pr_alert(fmt, ...) \
-	pr_printk_hash(KERN_ALERT, fmt, ##__VA_ARGS__)
+	printk(KERN_ALERT pr_fmt(fmt), ##__VA_ARGS__)
 #define pr_crit(fmt, ...) \
-	pr_printk_hash(KERN_CRIT, fmt, ##__VA_ARGS__)
+	printk(KERN_CRIT pr_fmt(fmt), ##__VA_ARGS__)
 #define pr_err(fmt, ...) \
-	pr_printk_hash(KERN_ERR, fmt, ##__VA_ARGS__)
+	printk(KERN_ERR pr_fmt(fmt), ##__VA_ARGS__)
 #define pr_warning(fmt, ...) \
-	pr_printk_hash(KERN_WARNING, fmt, ##__VA_ARGS__)
+	printk(KERN_WARNING pr_fmt(fmt), ##__VA_ARGS__)
 #define pr_warn pr_warning
 #define pr_notice(fmt, ...) \
-	pr_printk_hash(KERN_NOTICE, fmt, ##__VA_ARGS__)
+	printk(KERN_NOTICE pr_fmt(fmt), ##__VA_ARGS__)
 #define pr_info(fmt, ...) \
-	pr_printk_hash(KERN_INFO, fmt, ##__VA_ARGS__)
+	printk(KERN_INFO pr_fmt(fmt), ##__VA_ARGS__)
 #define pr_cont(fmt, ...) \
-	__pr_printk_hash(KERN_CONT, fmt, ##__VA_ARGS__)
+	printk(KERN_CONT fmt, ##__VA_ARGS__)
 
 /* pr_devel() should produce zero code unless DEBUG is defined */
 #ifdef DEBUG
@@ -277,17 +261,17 @@ int printk_hash(const char *, const char *, ...);
  */
 
 #ifdef CONFIG_PRINTK
-#define printk_once(fmt, ...)			\
-({						\
-	static bool __print_once;		\
-						\
-	if (!__print_once) {			\
-		__print_once = true;		\
-		printk(fmt, ##__VA_ARGS__);	\
-	}					\
+#define printk_once(fmt, ...)					\
+({								\
+	static bool __print_once __read_mostly;			\
+								\
+	if (!__print_once) {					\
+		__print_once = true;				\
+		printk(fmt, ##__VA_ARGS__);			\
+	}							\
 })
 #else
-#define printk_once(fmt, ...)			\
+#define printk_once(fmt, ...)					\
 	no_printk(fmt, ##__VA_ARGS__)
 #endif
 

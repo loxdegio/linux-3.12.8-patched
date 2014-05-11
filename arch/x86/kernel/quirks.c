@@ -4,7 +4,9 @@
 #include <linux/pci.h>
 #include <linux/irq.h>
 
-#if defined(CONFIG_X86_IO_APIC) && (defined(CONFIG_SMP) || defined(CONFIG_XEN)) && defined(CONFIG_PCI)
+#include <asm/hpet.h>
+
+#if defined(CONFIG_X86_IO_APIC) && defined(CONFIG_SMP) && defined(CONFIG_PCI)
 
 static void quirk_intel_irqbalance(struct pci_dev *dev)
 {
@@ -32,20 +34,9 @@ static void quirk_intel_irqbalance(struct pci_dev *dev)
 	if (!(word & (1 << 13))) {
 		dev_info(&dev->dev, "Intel E7520/7320/7525 detected; "
 			"disabling irq balancing and affinity\n");
-#ifndef CONFIG_XEN
 		noirqdebug_setup("");
 #ifdef CONFIG_PROC_FS
 		no_irq_affinity = 1;
-#endif
-#else
-		{
-			struct xen_platform_op op = {
-				.cmd = XENPF_platform_quirk,
-				.u.platform_quirk.quirk_id = QUIRK_NOIRQBALANCING
-			};
-
-			WARN_ON(HYPERVISOR_platform_op(&op));
-		}
 #endif
 	}
 
@@ -62,8 +53,6 @@ DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_E7520_MCH,
 #endif
 
 #if defined(CONFIG_HPET_TIMER)
-#include <asm/hpet.h>
-
 unsigned long force_hpet_address;
 
 static enum {
@@ -580,5 +569,42 @@ DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_AMD, PCI_DEVICE_ID_AMD_15H_NB_F4,
 			quirk_amd_nb_node);
 DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_AMD, PCI_DEVICE_ID_AMD_15H_NB_F5,
 			quirk_amd_nb_node);
+
+#endif
+
+#ifdef CONFIG_PCI
+/*
+ * Processor does not ensure DRAM scrub read/write sequence
+ * is atomic wrt accesses to CC6 save state area. Therefore
+ * if a concurrent scrub read/write access is to same address
+ * the entry may appear as if it is not written. This quirk
+ * applies to Fam16h models 00h-0Fh
+ *
+ * See "Revision Guide" for AMD F16h models 00h-0fh,
+ * document 51810 rev. 3.04, Nov 2013
+ */
+static void amd_disable_seq_and_redirect_scrub(struct pci_dev *dev)
+{
+	u32 val;
+
+	/*
+	 * Suggested workaround:
+	 * set D18F3x58[4:0] = 00h and set D18F3x5C[0] = 0b
+	 */
+	pci_read_config_dword(dev, 0x58, &val);
+	if (val & 0x1F) {
+		val &= ~(0x1F);
+		pci_write_config_dword(dev, 0x58, val);
+	}
+
+	pci_read_config_dword(dev, 0x5C, &val);
+	if (val & BIT(0)) {
+		val &= ~BIT(0);
+		pci_write_config_dword(dev, 0x5c, val);
+	}
+}
+
+DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_AMD, PCI_DEVICE_ID_AMD_16H_NB_F3,
+			amd_disable_seq_and_redirect_scrub);
 
 #endif

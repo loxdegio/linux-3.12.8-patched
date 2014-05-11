@@ -15,7 +15,6 @@
 #include <stdio.h>
 #include <ctype.h>
 #include <string.h>
-#include <fnmatch.h>
 #include <limits.h>
 #include <stdbool.h>
 #include <errno.h>
@@ -585,12 +584,16 @@ static int ignore_undef_symbol(struct elf_info *info, const char *symname)
 		if (strncmp(symname, "_restgpr_", sizeof("_restgpr_") - 1) == 0 ||
 		    strncmp(symname, "_savegpr_", sizeof("_savegpr_") - 1) == 0 ||
 		    strncmp(symname, "_rest32gpr_", sizeof("_rest32gpr_") - 1) == 0 ||
-		    strncmp(symname, "_save32gpr_", sizeof("_save32gpr_") - 1) == 0)
+		    strncmp(symname, "_save32gpr_", sizeof("_save32gpr_") - 1) == 0 ||
+		    strncmp(symname, "_restvr_", sizeof("_restvr_") - 1) == 0 ||
+		    strncmp(symname, "_savevr_", sizeof("_savevr_") - 1) == 0)
 			return 1;
 	if (info->hdr->e_machine == EM_PPC64)
 		/* Special register function linked on all modules during final link of .ko */
 		if (strncmp(symname, "_restgpr0_", sizeof("_restgpr0_") - 1) == 0 ||
-		    strncmp(symname, "_savegpr0_", sizeof("_savegpr0_") - 1) == 0)
+		    strncmp(symname, "_savegpr0_", sizeof("_savegpr0_") - 1) == 0 ||
+		    strncmp(symname, "_restvr_", sizeof("_restvr_") - 1) == 0 ||
+		    strncmp(symname, "_savevr_", sizeof("_savevr_") - 1) == 0)
 			return 1;
 	/* Do not ignore this symbol */
 	return 0;
@@ -1499,6 +1502,16 @@ static int addend_386_rel(struct elf_info *elf, Elf_Shdr *sechdr, Elf_Rela *r)
 #define R_ARM_JUMP24	29
 #endif
 
+#ifndef	R_ARM_THM_CALL
+#define	R_ARM_THM_CALL		10
+#endif
+#ifndef	R_ARM_THM_JUMP24
+#define	R_ARM_THM_JUMP24	30
+#endif
+#ifndef	R_ARM_THM_JUMP19
+#define	R_ARM_THM_JUMP19	51
+#endif
+
 static int addend_arm_rel(struct elf_info *elf, Elf_Shdr *sechdr, Elf_Rela *r)
 {
 	unsigned int r_typ = ELF_R_TYPE(r->r_info);
@@ -1512,6 +1525,9 @@ static int addend_arm_rel(struct elf_info *elf, Elf_Shdr *sechdr, Elf_Rela *r)
 	case R_ARM_PC24:
 	case R_ARM_CALL:
 	case R_ARM_JUMP24:
+	case R_ARM_THM_CALL:
+	case R_ARM_THM_JUMP24:
+	case R_ARM_THM_JUMP19:
 		/* From ARM ABI: ((S + A) | T) - P */
 		r->r_addend = (int)(long)(elf->hdr +
 		              sechdr->sh_offset +
@@ -1676,99 +1692,6 @@ static void check_sec_ref(struct module *mod, const char *modname,
 			section_rel(modname, elf, &elf->sechdrs[i]);
 	}
 }
-
-#ifdef CONFIG_SUSE_KERNEL_SUPPORTED
-/*
- * Replace dashes with underscores.
- * Dashes inside character range patterns (e.g. [0-9]) are left unchanged.
- * (copied from module-init-tools/util.c)
- */
-static char *underscores(char *string)
-{
-	unsigned int i;
-
-	if (!string)
-		return NULL;
-
-	for (i = 0; string[i]; i++) {
-		switch (string[i]) {
-		case '-':
-			string[i] = '_';
-			break;
-
-		case ']':
-			warn("Unmatched bracket in %s\n", string);
-			break;
-
-		case '[':
-			i += strcspn(&string[i], "]");
-			if (!string[i])
-				warn("Unmatched bracket in %s\n", string);
-			break;
-		}
-	}
-	return string;
-}
-
-void *supported_file;
-unsigned long supported_size;
-
-static const char *supported(const char *modname)
-{
-	unsigned long pos = 0;
-	char *line;
-
-	/* In a first shot, do a simple linear scan. */
-	while ((line = get_next_line(&pos, supported_file,
-				     supported_size))) {
-		const char *how = "yes";
-		char *l = line;
-		char *pat_basename, *mod, *orig_mod, *mod_basename;
-
-		/* optional type-of-support flag */
-		for (l = line; *l != '\0'; l++) {
-			if (*l == ' ' || *l == '\t') {
-				*l = '\0';
-				how = l + 1;
-				break;
-			}
-		}
-		/* strip .ko extension */
-		l = line + strlen(line);
-		if (l - line > 3 && !strcmp(l-3, ".ko"))
-			*(l-3) = '\0';
-
-		/*
-		 * convert dashes to underscores in the last path component
-		 * of line and mod
-		 */
-		if ((pat_basename = strrchr(line, '/')))
-			pat_basename++;
-		else
-			pat_basename = line;
-		underscores(pat_basename);
-
-		orig_mod = mod = strdup(modname);
-		if ((mod_basename = strrchr(mod, '/')))
-			mod_basename++;
-		else
-			mod_basename = mod;
-		underscores(mod_basename);
-
-		/* only compare the last component if no wildcards are used */
-		if (strcspn(line, "[]*?") == strlen(line)) {
-			line = pat_basename;
-			mod = mod_basename;
-		}
-		if (!fnmatch(line, mod, 0)) {
-			free(orig_mod);
-			return how;
-		}
-		free(orig_mod);
-	}
-	return NULL;
-}
-#endif
 
 static void read_symbols(char *modname)
 {
@@ -1984,15 +1907,6 @@ static void add_staging_flag(struct buffer *b, const char *name)
 		buf_printf(b, "\nMODULE_INFO(staging, \"Y\");\n");
 }
 
-#ifdef CONFIG_SUSE_KERNEL_SUPPORTED
-static void add_supported_flag(struct buffer *b, struct module *mod)
-{
-	const char *how = supported(mod->name);
-	if (how)
-		buf_printf(b, "\nMODULE_INFO(supported, \"%s\");\n", how);
-}
-#endif
-
 /**
  * Record CRCs for unresolved symbols
  **/
@@ -2134,15 +2048,6 @@ static void write_if_changed(struct buffer *b, const char *fname)
 	fclose(file);
 }
 
-#ifdef CONFIG_SUSE_KERNEL_SUPPORTED
-static void read_supported(const char *fname)
-{
-	supported_file = grab_file(fname, &supported_size);
-	if (!supported_file)
-		; /* ignore error */
-}
-#endif
-
 /* parse Module.symvers file. line format:
  * 0x12345678<tab>symbol<tab>module[[<tab>export]<tab>something]
  **/
@@ -2236,15 +2141,12 @@ int main(int argc, char **argv)
 	struct buffer buf = { };
 	char *kernel_read = NULL, *module_read = NULL;
 	char *dump_write = NULL, *files_source = NULL;
-#ifdef CONFIG_SUSE_KERNEL_SUPPORTED
-	const char *supported = NULL;
-#endif
 	int opt;
 	int err;
 	struct ext_sym_list *extsym_iter;
 	struct ext_sym_list *extsym_start = NULL;
 
-	while ((opt = getopt(argc, argv, "i:I:e:mnsST:o:awM:K:N:")) != -1) {
+	while ((opt = getopt(argc, argv, "i:I:e:mnsST:o:awM:K:")) != -1) {
 		switch (opt) {
 		case 'i':
 			kernel_read = optarg;
@@ -2285,20 +2187,11 @@ int main(int argc, char **argv)
 		case 'w':
 			warn_unresolved = 1;
 			break;
-		case 'N':
-#ifdef CONFIG_SUSE_KERNEL_SUPPORTED
-			supported = optarg;
-#endif
-			break;
 		default:
 			exit(1);
 		}
 	}
 
-#ifdef CONFIG_SUSE_KERNEL_SUPPORTED
-	if (supported)
-		read_supported(supported);
-#endif
 	if (kernel_read)
 		read_dump(kernel_read, 1);
 	if (module_read)
@@ -2335,9 +2228,6 @@ int main(int argc, char **argv)
 		add_header(&buf, mod);
 		add_intree_flag(&buf, !external_module);
 		add_staging_flag(&buf, mod->name);
-#ifdef CONFIG_SUSE_KERNEL_SUPPORTED
-		add_supported_flag(&buf, mod);
-#endif
 		err |= add_versions(&buf, mod);
 		add_depends(&buf, mod, modules);
 		add_moddevtable(&buf, mod);

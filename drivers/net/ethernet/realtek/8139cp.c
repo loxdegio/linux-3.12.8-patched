@@ -77,7 +77,6 @@
 #include <asm/io.h>
 #include <asm/irq.h>
 #include <asm/uaccess.h>
-#include <xen/xen_pvonhvm.h>
 
 /* These identify the driver base version and may not be removed. */
 static char version[] =
@@ -384,6 +383,7 @@ static int cp_set_eeprom(struct net_device *dev,
 			 struct ethtool_eeprom *eeprom, u8 *data);
 
 static DEFINE_PCI_DEVICE_TABLE(cp_pci_tbl) = {
+	{ PCI_DEVICE(PCI_VENDOR_ID_REALTEK,	PCI_DEVICE_ID_REALTEK_8139), },
 	{ PCI_DEVICE(PCI_VENDOR_ID_TTTECH,	PCI_DEVICE_ID_TTTECH_MC322), },
 	{ },
 };
@@ -2126,9 +2126,6 @@ static struct pci_driver cp_driver = {
 
 static int __init cp_init (void)
 {
-	if (xen_pvonhvm_unplugged_nics)
-		return -EBUSY;
-
 #ifdef MODULE
 	pr_info("%s", version);
 #endif

@@ -33,7 +33,7 @@ static int pause_on_oops;
 static int pause_on_oops_flag;
 static DEFINE_SPINLOCK(pause_on_oops_lock);
 
-int panic_timeout;
+int panic_timeout = CONFIG_PANIC_TIMEOUT;
 EXPORT_SYMBOL_GPL(panic_timeout);
 
 ATOMIC_NOTIFIER_HEAD(panic_notifier_list);
@@ -210,10 +210,6 @@ static const struct tnt tnts[] = {
 	{ TAINT_CRAP,			'C', ' ' },
 	{ TAINT_FIRMWARE_WORKAROUND,	'I', ' ' },
 	{ TAINT_OOT_MODULE,		'O', ' ' },
-#ifdef CONFIG_SUSE_KERNEL_SUPPORTED
-	{ TAINT_NO_SUPPORT,		'N', ' ' },
-	{ TAINT_EXTERNAL_SUPPORT,	'X', ' ' },
-#endif
 };
 
 /**
@@ -232,8 +228,6 @@ static const struct tnt tnts[] = {
  *  'C' - modules from drivers/staging are loaded.
  *  'I' - Working around severe firmware bug.
  *  'O' - Out-of-tree module has been loaded.
- *  'N' - Unsuported modules loaded.
- *  'X' - Modules with external support loaded.
  *
  *	The string is overwritten by the next call to print_tainted().
  */

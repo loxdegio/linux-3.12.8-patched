@@ -41,11 +41,9 @@
 #include <linux/kmod.h>
 #include <linux/reboot.h>
 #include <linux/device.h>
-#include <linux/dmi.h>
-#include <asm/uaccess.h>
 #include <linux/thermal.h>
-#include <acpi/acpi_bus.h>
-#include <acpi/acpi_drivers.h>
+#include <linux/acpi.h>
+#include <asm/uaccess.h>
 
 #define PREFIX "ACPI: "
 
@@ -104,6 +102,8 @@ MODULE_DEVICE_TABLE(acpi, thermal_device_ids);
 
 #ifdef CONFIG_PM_SLEEP
 static int acpi_thermal_resume(struct device *dev);
+#else
+#define acpi_thermal_resume NULL
 #endif
 static SIMPLE_DEV_PM_OPS(acpi_thermal_pm, NULL, acpi_thermal_resume);
 
@@ -863,7 +863,7 @@ acpi_thermal_unbind_cooling_device(struct thermal_zone_device *thermal,
 	return acpi_thermal_cooling_device_cb(thermal, cdev, false);
 }
 
-static const struct thermal_zone_device_ops acpi_thermal_zone_ops = {
+static struct thermal_zone_device_ops acpi_thermal_zone_ops = {
 	.bind = acpi_thermal_bind_cooling_device,
 	.unbind	= acpi_thermal_unbind_cooling_device,
 	.get_temp = thermal_get_temp,
@@ -1064,86 +1064,6 @@ static void acpi_thermal_guess_offset(struct acpi_thermal *tz)
 		tz->kelvin_offset = 2732;
 }
 
-static struct dmi_system_id thermal_psv_dmi_table[] = {
-	{
-		.ident = "IBM ThinkPad T41",
-		.matches = {
-			DMI_MATCH(DMI_BIOS_VENDOR,"IBM"),
-			DMI_MATCH(DMI_PRODUCT_VERSION,"ThinkPad T41"),
-		},
-	},
-	{
-		.ident = "IBM ThinkPad T42",
-		.matches = {
-			DMI_MATCH(DMI_BIOS_VENDOR,"IBM"),
-			DMI_MATCH(DMI_PRODUCT_VERSION,"ThinkPad T42"),
-		},
-	},
-	{
-		.ident = "IBM ThinkPad T43",
-		.matches = {
-			DMI_MATCH(DMI_BIOS_VENDOR,"IBM"),
-			DMI_MATCH(DMI_PRODUCT_VERSION,"ThinkPad T43"),
-		},
-	},
-	{
-		.ident = "IBM ThinkPad T41p",
-		.matches = {
-			DMI_MATCH(DMI_BIOS_VENDOR,"IBM"),
-			DMI_MATCH(DMI_PRODUCT_VERSION,"ThinkPad T41p"),
-		},
-	},
-	{
-		.ident = "IBM ThinkPad T42p",
-		.matches = {
-			DMI_MATCH(DMI_BIOS_VENDOR,"IBM"),
-			DMI_MATCH(DMI_PRODUCT_VERSION,"ThinkPad T42p"),
-		},
-	},
-	{
-		.ident = "IBM ThinkPad T43p",
-		.matches = {
-			DMI_MATCH(DMI_BIOS_VENDOR,"IBM"),
-			DMI_MATCH(DMI_PRODUCT_VERSION,"ThinkPad T43p"),
-		},
-	},
-	{
-		.ident = "IBM ThinkPad R40",
-		.matches = {
-			DMI_MATCH(DMI_BIOS_VENDOR,"IBM"),
-			DMI_MATCH(DMI_PRODUCT_VERSION,"ThinkPad R40"),
-		},
-	},
-	{
-		.ident = "IBM ThinkPad R50p",
-		.matches = {
-			DMI_MATCH(DMI_BIOS_VENDOR,"IBM"),
-			DMI_MATCH(DMI_PRODUCT_VERSION,"ThinkPad R50p"),
-		},
-	},
-	{},
-};
-
-static int acpi_thermal_set_polling(struct acpi_thermal *tz, int seconds)
-{
-       if (!tz)
-	       return -EINVAL;
-
-       /* Convert value to deci-seconds */
-       tz->polling_frequency = seconds * 10;
-
-       tz->thermal_zone->polling_delay = seconds * 1000;
-
-       if (tz->tz_enabled)
-	       thermal_zone_device_update(tz->thermal_zone);
-
-       ACPI_DEBUG_PRINT((ACPI_DB_INFO,
-			 "Polling frequency set to %lu seconds\n",
-			 tz->polling_frequency/10));
-
-       return 0;
-}
-
 static int acpi_thermal_add(struct acpi_device *device)
 {
 	int result = 0;
@@ -1172,18 +1092,6 @@ static int acpi_thermal_add(struct acpi_device *device)
 	result = acpi_thermal_register_thermal_zone(tz);
 	if (result)
 		goto free_memory;
-
-	if (dmi_check_system(thermal_psv_dmi_table)) {
-		if (tz->trips.passive.flags.valid &&
-		    tz->trips.passive.temperature > CELSIUS_TO_KELVIN(85)) {
-			printk (KERN_INFO "Adjust passive trip point from %lu"
-				" to %lu\n",
-				KELVIN_TO_CELSIUS(tz->trips.passive.temperature),
-				KELVIN_TO_CELSIUS(tz->trips.passive.temperature - 150));
-			tz->trips.passive.temperature -= 150;
-			acpi_thermal_set_polling(tz, 5);
-		}
-	}
 
 	pr_info(PREFIX "%s [%s] (%ld C)\n", acpi_device_name(device),
 		acpi_device_bid(device), KELVIN_TO_CELSIUS(tz->temperature));

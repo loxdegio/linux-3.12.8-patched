@@ -15,7 +15,6 @@ $(obj)/inat.o: $(obj)/inat-tables.c
 clean-files := inat-tables.c
 
 obj-$(CONFIG_SMP) += msr-smp.o cache-smp.o
-obj-$(CONFIG_XEN) += cache-smp.o
 
 lib-y := delay.o misc.o
 lib-y += thunk_$(BITS).o
@@ -25,7 +24,7 @@ lib-$(CONFIG_SMP) += rwlock.o
 lib-$(CONFIG_RWSEM_XCHGADD_ALGORITHM) += rwsem.o
 lib-$(CONFIG_INSTRUCTION_DECODER) += insn.o inat.o
 
-obj-y += msr.o msr-reg.o msr-reg-export.o
+obj-y += msr.o msr-reg.o msr-reg-export.o hash.o
 
 ifeq ($(CONFIG_X86_32),y)
         obj-y += atomic64_32.o
@@ -45,5 +44,3 @@ else
         lib-y += copy_user_64.o copy_user_nocache_64.o
 	lib-y += cmpxchg16b_emu.o
 endif
-
-lib-$(CONFIG_XEN_SCRUB_PAGES) += scrub.o
