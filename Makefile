@@ -1,6 +1,6 @@
 VERSION = 3
 PATCHLEVEL = 14
-SUBLEVEL = 3
+SUBLEVEL = 4
 EXTRAVERSION = -geek
 NAME = Too Good For This Sinful Earth
 
@@ -351,8 +351,7 @@ CHECK		= sparse
 
 CHECKFLAGS     := -D__linux__ -Dlinux -D__STDC__ -Dunix -D__unix__ \
 		  -Wbitwise -Wno-return-void $(CF)
-
-OFLAGS	= -march=native -mtune=native -O2			  
+OFLAGS			= -O3 -march=native -mtune=native
 		  
 CFLAGS_MODULE   = $(OFLAGS)
 AFLAGS_MODULE   = $(OFLAGS)

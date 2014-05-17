@@ -5516,4 +5516,3 @@ subsys_initcall(ksm_init);
 #else
 late_initcall(uksm_init);
 #endif
-
