@@ -3,7 +3,7 @@ linux-3.14.x-patched
 
 Versione del geek kernel con le patch scelte da me
 
-bfq fix suse uksm zen
+bfq ck fix suse uksm zen
 
 Se vuoi scaricare questo repo e rimanere aggiornato con tutte le modifiche digita su terminale:
 
