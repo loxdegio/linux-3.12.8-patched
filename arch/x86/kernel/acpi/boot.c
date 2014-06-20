@@ -53,10 +53,6 @@ EXPORT_SYMBOL(acpi_disabled);
 # include <asm/proto.h>
 #endif				/* X86 */
 
-#define BAD_MADT_ENTRY(entry, end) (					    \
-		(!entry) || (unsigned long)entry + sizeof(*entry) > end ||  \
-		((struct acpi_subtable_header *)entry)->length < sizeof(*entry))
-
 #define PREFIX			"ACPI: "
 
 int acpi_noirq;				/* skip ACPI IRQ initialization */
@@ -613,10 +609,10 @@ static void acpi_map_cpu2node(acpi_handle handle, int cpu, int physid)
 	int nid;
 
 	nid = acpi_get_node(handle);
-	if (nid == -1 || !node_online(nid))
-		return;
-	set_apicid_to_node(physid, nid);
-	numa_set_node(cpu, nid);
+	if (nid != -1) {
+		set_apicid_to_node(physid, nid);
+		numa_set_node(cpu, nid);
+	}
 #endif
 }
 
@@ -907,10 +903,6 @@ static int __init acpi_parse_madt_lapic_entries(void)
 #ifdef	CONFIG_X86_IO_APIC
 #define MP_ISA_BUS		0
 
-#ifdef CONFIG_X86_ES7000
-extern int es7000_plat;
-#endif
-
 void __init mp_override_legacy_irq(u8 bus_irq, u8 polarity, u8 trigger, u32 gsi)
 {
 	int ioapic;
@@ -959,14 +951,6 @@ void __init mp_config_acpi_legacy_irqs(void)
 #endif
 	set_bit(MP_ISA_BUS, mp_bus_not_pci);
 	pr_debug("Bus #%d is ISA\n", MP_ISA_BUS);
-
-#ifdef CONFIG_X86_ES7000
-	/*
-	 * Older generations of ES7000 have no legacy identity mappings
-	 */
-	if (es7000_plat == 1)
-		return;
-#endif
 
 	/*
 	 * Use the default configuration for the IRQs 0-15.  Unless
@@ -1383,42 +1367,6 @@ static struct dmi_system_id __initdata acpi_dmi_table[] = {
 		     DMI_MATCH(DMI_PRODUCT_NAME, "TravelMate 360"),
 		     },
 	 },
-	/* ThinkPad Edge 11 (AMD) */
-	{
-	 .callback = dmi_ignore_irq0_timer_override,
-	 .ident = "ThinkPad Edge",
-	 .matches = {
-		     DMI_MATCH(DMI_SYS_VENDOR, "LENOVO"),
-		     DMI_MATCH(DMI_PRODUCT_NAME, "254523U"),
-		    },
-	},
-	/* ThinkPad Edge 13 (AMD) */
-	{
-	 .callback = dmi_ignore_irq0_timer_override,
-	 .ident = "ThinkPad Edge",
-	 .matches = {
-		     DMI_MATCH(DMI_SYS_VENDOR, "LENOVO"),
-		     DMI_MATCH(DMI_PRODUCT_NAME, "022120U"),
-		    },
-	},
-	/* ThinkPad Edge 14 (AMD) */
-	{
-	 .callback = dmi_ignore_irq0_timer_override,
-	 .ident = "ThinkPad Edge",
-	 .matches = {
-		     DMI_MATCH(DMI_SYS_VENDOR, "LENOVO"),
-		     DMI_MATCH(DMI_PRODUCT_NAME, "019923U"),
-		    },
-	},
-	/* ThinkPad Edge 15 (AMD) */
-	{
-	 .callback = dmi_ignore_irq0_timer_override,
-	 .ident = "ThinkPad Edge",
-	 .matches = {
-		     DMI_MATCH(DMI_SYS_VENDOR, "LENOVO"),
-		     DMI_MATCH(DMI_PRODUCT_NAME, "030222U"),
-		    },
-	},
 	{}
 };
 

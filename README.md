@@ -1,17 +1,17 @@
-linux-3.14.x-patched
+linux-3.15.x-patched
 ====================
 
 Versione del geek kernel con le patch scelte da me
 
-bfq ck fix suse uksm zen
+suse
 
 Se vuoi scaricare questo repo e rimanere aggiornato con tutte le modifiche digita su terminale:
 
-git clone https://github.com/loxdegio/linux-patched -b 3.14-geek
+git clone https://github.com/loxdegio/linux-patched -b 3.15-geek
 
 If you want to download and keep upgraded this repo type on terminal:
 
-git clone https://github.com/loxdegio/linux-patched -b 3.14-geek
+git clone https://github.com/loxdegio/linux-patched -b 3.15-geek
 
 
 COMPILATION INSTRUCTIONS

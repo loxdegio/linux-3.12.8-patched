@@ -19,13 +19,14 @@
  * current->executable is only used by the procfs.  This allows a dispatch
  * table to check for several different types  of binary formats.  We keep
  * trying until we recognize the file or we run out of supported binary
- * formats.
+ * formats. 
  */
 
 #include <linux/slab.h>
 #include <linux/file.h>
 #include <linux/fdtable.h>
 #include <linux/mm.h>
+#include <linux/vmacache.h>
 #include <linux/stat.h>
 #include <linux/fcntl.h>
 #include <linux/swap.h>
@@ -55,9 +56,6 @@
 #include <linux/pipe_fs_i.h>
 #include <linux/oom.h>
 #include <linux/compat.h>
-#include <linux/ksm.h>
-
-#include <trace/events/fs.h>
 
 #include <asm/uaccess.h>
 #include <asm/mmu_context.h>
@@ -100,6 +98,7 @@ static inline void put_binfmt(struct linux_binfmt * fmt)
 	module_put(fmt->module);
 }
 
+#ifdef CONFIG_USELIB
 /*
  * Note that a shared library must be both readable and executable due to
  * security reasons.
@@ -159,6 +158,7 @@ exit:
 out:
   	return error;
 }
+#endif /* #ifdef CONFIG_USELIB */
 
 #ifdef CONFIG_MMU
 /*
@@ -775,8 +775,6 @@ static struct file *do_open_exec(struct filename *name)
 
 	fsnotify_open(file);
 
-	trace_open_exec(name);
-
 	err = deny_write_access(file);
 	if (err)
 		goto exit;
@@ -815,7 +813,7 @@ EXPORT_SYMBOL(kernel_read);
 
 ssize_t read_code(struct file *file, unsigned long addr, loff_t pos, size_t len)
 {
-	ssize_t res = file->f_op->read(file, (void __user *)addr, len, &pos);
+	ssize_t res = vfs_read(file, (void __user *)addr, len, &pos);
 	if (res > 0)
 		flush_icache_range(addr, addr + len);
 	return res;
@@ -825,7 +823,7 @@ EXPORT_SYMBOL(read_code);
 static int exec_mmap(struct mm_struct *mm)
 {
 	struct task_struct *tsk;
-	struct mm_struct * old_mm, *active_mm;
+	struct mm_struct *old_mm, *active_mm;
 
 	/* Notify parent that we're no longer interested in the old VM */
 	tsk = current;
@@ -851,6 +849,8 @@ static int exec_mmap(struct mm_struct *mm)
 	tsk->mm = mm;
 	tsk->active_mm = mm;
 	activate_mm(active_mm, mm);
+	tsk->mm->vmacache_seqnum = 0;
+	vmacache_flush(tsk);
 	task_unlock(tsk);
 	if (old_mm) {
 		up_read(&old_mm->mmap_sem);
@@ -1046,28 +1046,13 @@ EXPORT_SYMBOL_GPL(get_task_comm);
  * so that a new one can be started
  */
 
-void set_task_comm(struct task_struct *tsk, char *buf)
+void set_task_comm(struct task_struct *tsk, const char *buf)
 {
 	task_lock(tsk);
 	trace_task_rename(tsk, buf);
 	strlcpy(tsk->comm, buf, sizeof(tsk->comm));
 	task_unlock(tsk);
 	perf_event_comm(tsk);
-}
-
-static void filename_to_taskname(char *tcomm, const char *fn, unsigned int len)
-{
-	int i, ch;
-
-	/* Copies the binary name from after last slash */
-	for (i = 0; (ch = *(fn++)) != '\0';) {
-		if (ch == '/')
-			i = 0; /* overwrite what we wrote */
-		else
-			if (i < len - 1)
-				tcomm[i++] = ch;
-	}
-	tcomm[i] = '\0';
 }
 
 int flush_old_exec(struct linux_binprm * bprm)
@@ -1083,8 +1068,6 @@ int flush_old_exec(struct linux_binprm * bprm)
 		goto out;
 
 	set_mm_exe_file(bprm->mm, bprm->file);
-
-	filename_to_taskname(bprm->tcomm, bprm->filename, sizeof(bprm->tcomm));
 	/*
 	 * Release all of the old mmap stuff
 	 */
@@ -1127,7 +1110,7 @@ void setup_new_exec(struct linux_binprm * bprm)
 	else
 		set_dumpable(current->mm, suid_dumpable);
 
-	set_task_comm(current, bprm->tcomm);
+	set_task_comm(current, kbasename(bprm->filename));
 
 	/* Set the new mm task size. We have to do that late because it may
 	 * depend on TIF_32BIT which is only updated in flush_thread() on
@@ -1148,7 +1131,6 @@ void setup_new_exec(struct linux_binprm * bprm)
 	/* An exec changes our domain. We are no longer part of the thread
 	   group */
 	current->self_exec_id++;
-
 	flush_signal_handlers(current, 0);
 	do_close_on_exec(current->files);
 }
@@ -1625,9 +1607,9 @@ SYSCALL_DEFINE3(execve,
 	return do_execve(getname(filename), argv, envp);
 }
 #ifdef CONFIG_COMPAT
-asmlinkage long compat_sys_execve(const char __user * filename,
-	const compat_uptr_t __user * argv,
-	const compat_uptr_t __user * envp)
+COMPAT_SYSCALL_DEFINE3(execve, const char __user *, filename,
+	const compat_uptr_t __user *, argv,
+	const compat_uptr_t __user *, envp)
 {
 	return compat_do_execve(getname(filename), argv, envp);
 }

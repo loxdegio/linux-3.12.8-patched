@@ -18,9 +18,6 @@
 #include <linux/pfn.h>
 #include <linux/bit_spinlock.h>
 #include <linux/shrinker.h>
-#include <linux/dcache.h>
-#include <linux/file.h>
-#include <linux/fs.h>
 
 struct mempolicy;
 struct anon_vma;
@@ -180,6 +177,9 @@ extern unsigned int kobjsize(const void *objp);
  */
 #define VM_SPECIAL (VM_IO | VM_DONTEXPAND | VM_PFNMAP | VM_MIXEDMAP)
 
+/* This mask defines which mm->def_flags a process can inherit its parent */
+#define VM_INIT_DEF_MASK	VM_NOHUGEPAGE
+
 /*
  * mapping from the currently active vm_flags protection bits (the
  * low four bits) to a page protection mask..
@@ -213,6 +213,10 @@ struct vm_fault {
 					 * is set (which is also implied by
 					 * VM_FAULT_ERROR).
 					 */
+	/* for ->map_pages() only */
+	pgoff_t max_pgoff;		/* map pages for offset from pgoff till
+					 * max_pgoff inclusive */
+	pte_t *pte;			/* pte entry associated with ->pgoff */
 };
 
 /*
@@ -224,6 +228,7 @@ struct vm_operations_struct {
 	void (*open)(struct vm_area_struct * area);
 	void (*close)(struct vm_area_struct * area);
 	int (*fault)(struct vm_area_struct *vma, struct vm_fault *vmf);
+	void (*map_pages)(struct vm_area_struct *vma, struct vm_fault *vmf);
 
 	/* notification that a previously read-only page is about to become
 	 * writable, if an error is returned it will cause a SIGBUS */
@@ -364,6 +369,8 @@ static inline int is_vmalloc_or_module_addr(const void *x)
 	return 0;
 }
 #endif
+
+extern void kvfree(const void *addr);
 
 static inline void compound_lock(struct page *page)
 {
@@ -584,6 +591,9 @@ static inline pte_t maybe_mkwrite(pte_t pte, struct vm_area_struct *vma)
 		pte = pte_mkwrite(pte);
 	return pte;
 }
+
+void do_set_pte(struct vm_area_struct *vma, unsigned long address,
+		struct page *page, pte_t *pte, bool write, bool anon);
 #endif
 
 /*
@@ -687,7 +697,7 @@ static inline pte_t maybe_mkwrite(pte_t pte, struct vm_area_struct *vma)
 #define ZONES_MASK		((1UL << ZONES_WIDTH) - 1)
 #define NODES_MASK		((1UL << NODES_WIDTH) - 1)
 #define SECTIONS_MASK		((1UL << SECTIONS_WIDTH) - 1)
-#define LAST_CPUPID_MASK	((1UL << LAST_CPUPID_WIDTH) - 1)
+#define LAST_CPUPID_MASK	((1UL << LAST_CPUPID_SHIFT) - 1)
 #define ZONEID_MASK		((1UL << ZONEID_SHIFT) - 1)
 
 static inline enum zone_type page_zonenum(const struct page *page)
@@ -1044,6 +1054,14 @@ extern void show_free_areas(unsigned int flags);
 extern bool skip_free_areas_node(unsigned int flags, int nid);
 
 int shmem_zero_setup(struct vm_area_struct *);
+#ifdef CONFIG_SHMEM
+bool shmem_mapping(struct address_space *mapping);
+#else
+static inline bool shmem_mapping(struct address_space *mapping)
+{
+	return false;
+}
+#endif
 
 extern int can_do_mlock(void);
 extern int user_shm_lock(size_t, struct user_struct *);
@@ -1155,87 +1173,6 @@ static inline int fixup_user_fault(struct task_struct *tsk,
 }
 #endif
 
-/*
- * Mainly for aufs which mmap(2) diffrent file and wants to print different path
- * in /proc/PID/maps.
- */
-/* #define AUFS_DEBUG_MMAP */
-static inline void aufs_trace(struct file *f, struct file *pr,
-			      const char func[], int line, const char func2[])
-{
-#ifdef AUFS_DEBUG_MMAP
-	if (pr)
-		pr_info("%s:%d: %s, %p\n", func, line, func2,
-			f ? (char *)f->f_dentry->d_name.name : "(null)");
-#endif
-}
-
-static inline struct file *vmr_do_pr_or_file(struct vm_region *region,
-					     const char func[], int line)
-{
-	struct file *f = region->vm_file, *pr = region->vm_prfile;
-	aufs_trace(f, pr, func, line, __func__);
-	return (f && pr) ? pr : f;
-}
-
-static inline void vmr_do_fput(struct vm_region *region,
-			       const char func[], int line)
-{
-	struct file *f = region->vm_file, *pr = region->vm_prfile;
-	aufs_trace(f, pr, func, line, __func__);
-	fput(f);
-	if (f && pr)
-		fput(pr);
-}
-
-static inline void vma_do_file_update_time(struct vm_area_struct *vma,
-					   const char func[], int line)
-{
-	struct file *f = vma->vm_file, *pr = vma->vm_prfile;
-	aufs_trace(f, pr, func, line, __func__);
-	file_update_time(f);
-	if (f && pr)
-		file_update_time(pr);
-}
-
-static inline struct file *vma_do_pr_or_file(struct vm_area_struct *vma,
-					     const char func[], int line)
-{
-	struct file *f = vma->vm_file, *pr = vma->vm_prfile;
-	aufs_trace(f, pr, func, line, __func__);
-	return (f && pr) ? pr : f;
-}
-
-static inline void vma_do_get_file(struct vm_area_struct *vma,
-				   const char func[], int line)
-{
-	struct file *f = vma->vm_file, *pr = vma->vm_prfile;
-	aufs_trace(f, pr, func, line, __func__);
-	get_file(f);
-	if (f && pr)
-		get_file(pr);
-}
-
-static inline void vma_do_fput(struct vm_area_struct *vma,
-			       const char func[], int line)
-{
-	struct file *f = vma->vm_file, *pr = vma->vm_prfile;
-	aufs_trace(f, pr, func, line, __func__);
-	fput(f);
-	if (f && pr)
-		fput(pr);
-}
-
-#define vmr_pr_or_file(region)		vmr_do_pr_or_file(region, __func__, \
-							  __LINE__)
-#define vmr_fput(region)		vmr_do_fput(region, __func__, __LINE__)
-#define vma_file_update_time(vma)	vma_do_file_update_time(vma, __func__, \
-								__LINE__)
-#define vma_pr_or_file(vma)		vma_do_pr_or_file(vma, __func__, \
-							  __LINE__)
-#define vma_get_file(vma)		vma_do_get_file(vma, __func__, __LINE__)
-#define vma_fput(vma)			vma_do_fput(vma, __func__, __LINE__)
-
 extern int access_process_vm(struct task_struct *tsk, unsigned long addr, void *buf, int len, int write);
 extern int access_remote_vm(struct mm_struct *mm, unsigned long addr,
 		void *buf, int len, int write);
@@ -1269,6 +1206,7 @@ void account_page_writeback(struct page *page);
 int set_page_dirty(struct page *page);
 int set_page_dirty_lock(struct page *page);
 int clear_page_dirty_for_io(struct page *page);
+int get_cmdline(struct task_struct *task, char *buffer, int buflen);
 
 /* Is the vma a continuation of the stack vma above it? */
 static inline int vma_growsdown(struct vm_area_struct *vma, unsigned long addr)
@@ -1571,9 +1509,15 @@ static inline void pgtable_page_dtor(struct page *page)
 
 #if USE_SPLIT_PMD_PTLOCKS
 
+static struct page *pmd_to_page(pmd_t *pmd)
+{
+	unsigned long mask = ~(PTRS_PER_PMD * sizeof(pmd_t) - 1);
+	return virt_to_page((void *)((unsigned long) pmd & mask));
+}
+
 static inline spinlock_t *pmd_lockptr(struct mm_struct *mm, pmd_t *pmd)
 {
-	return ptlock_ptr(virt_to_page(pmd));
+	return ptlock_ptr(pmd_to_page(pmd));
 }
 
 static inline bool pgtable_pmd_page_ctor(struct page *page)
@@ -1592,7 +1536,7 @@ static inline void pgtable_pmd_page_dtor(struct page *page)
 	ptlock_free(page);
 }
 
-#define pmd_huge_pte(mm, pmd) (virt_to_page(pmd)->pmd_huge_pte)
+#define pmd_huge_pte(mm, pmd) (pmd_to_page(pmd)->pmd_huge_pte)
 
 #else
 
@@ -1736,10 +1680,8 @@ static inline int __early_pfn_to_nid(unsigned long pfn)
 #else
 /* please see mm/page_alloc.c */
 extern int __meminit early_pfn_to_nid(unsigned long pfn);
-#ifdef CONFIG_HAVE_ARCH_EARLY_PFN_TO_NID
 /* there is a per-arch backend function. */
 extern int __meminit __early_pfn_to_nid(unsigned long pfn);
-#endif /* CONFIG_HAVE_ARCH_EARLY_PFN_TO_NID */
 #endif
 
 extern void set_dma_reserve(unsigned long new_dma_reserve);
@@ -1834,6 +1776,9 @@ extern void set_mm_exe_file(struct mm_struct *mm, struct file *new_exe_file);
 extern struct file *get_mm_exe_file(struct mm_struct *mm);
 
 extern int may_expand_vm(struct mm_struct *mm, unsigned long npages);
+extern struct vm_area_struct *_install_special_mapping(struct mm_struct *mm,
+				   unsigned long addr, unsigned long len,
+				   unsigned long flags, struct page **pages);
 extern int install_special_mapping(struct mm_struct *mm,
 				   unsigned long addr, unsigned long len,
 				   unsigned long flags, struct page **pages);
@@ -1901,9 +1846,11 @@ vm_unmapped_area(struct vm_unmapped_area_info *info)
 extern void truncate_inode_pages(struct address_space *, loff_t);
 extern void truncate_inode_pages_range(struct address_space *,
 				       loff_t lstart, loff_t lend);
+extern void truncate_inode_pages_final(struct address_space *);
 
 /* generic vm_area_ops exported for stackable file systems */
 extern int filemap_fault(struct vm_area_struct *, struct vm_fault *);
+extern void filemap_map_pages(struct vm_area_struct *vma, struct vm_fault *vmf);
 extern int filemap_page_mkwrite(struct vm_area_struct *vma, struct vm_fault *vmf);
 
 /* mm/page-writeback.c */
@@ -1931,9 +1878,6 @@ void page_cache_async_readahead(struct address_space *mapping,
 				unsigned long size);
 
 unsigned long max_sane_readahead(unsigned long nr);
-unsigned long ra_submit(struct file_ra_state *ra,
-			struct address_space *mapping,
-			struct file *filp);
 
 /* Generic expand stack which grows the stack according to GROWS{UP,DOWN} */
 extern int expand_stack(struct vm_area_struct *vma, unsigned long address);

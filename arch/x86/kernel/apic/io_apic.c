@@ -2189,7 +2189,7 @@ void send_cleanup_vector(struct irq_cfg *cfg)
 	cfg->move_in_progress = 0;
 }
 
-asmlinkage void smp_irq_move_cleanup_interrupt(void)
+asmlinkage __visible void smp_irq_move_cleanup_interrupt(void)
 {
 	unsigned vector, me;
 
@@ -3425,6 +3425,11 @@ int get_nr_irqs_gsi(void)
 	return nr_irqs_gsi;
 }
 
+unsigned int arch_dynirq_lower_bound(unsigned int from)
+{
+	return from < nr_irqs_gsi ? nr_irqs_gsi : from;
+}
+
 int __init arch_probe_nr_irqs(void)
 {
 	int nr;
@@ -3576,11 +3581,6 @@ static int __init io_apic_get_version(int ioapic)
 int acpi_get_override_irq(u32 gsi, int *trigger, int *polarity)
 {
 	int ioapic, pin, idx;
-
-#ifdef CONFIG_ACPI
-	if (acpi_irq_model != ACPI_IRQ_MODEL_IOAPIC)
-		return -1;
-#endif
 
 	if (skip_ioapic_setup)
 		return -1;

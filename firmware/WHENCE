@@ -273,16 +273,6 @@ Converted from Intel HEX files, used in our binary representation of ihex.
 
 --------------------------------------------------------------------------
 
-Driver: ip2 -- Computone IntelliPort Plus serial device
-
-File: intelliport2.bin
-
-Licence: Unknown
-
-Found in hex form in kernel source.
-
---------------------------------------------------------------------------
-
 Driver: CPiA2 -- cameras based on Vision's CPiA2
 
 File: cpia2/stv0672_vp4.bin
@@ -860,26 +850,5 @@ Licence:
  * SOFTWARE.
 
 Found in hex form in kernel source.
-
---------------------------------------------------------------------------
-
-Driver: radeon - ATI Radeon
-
-File: radeon/R600_rlc.bin
-File: radeon/R700_rlc.bin
-File: radeon/CEDAR_me.bin
-File: radeon/CEDAR_pfp.bin
-File: radeon/CEDAR_rlc.bin
-File: radeon/CYPRESS_me.bin
-File: radeon/CYPRESS_pfp.bin
-File: radeon/CYPRESS_rlc.bin
-File: radeon/JUNIPER_me.bin
-File: radeon/JUNIPER_pfp.bin
-File: radeon/JUNIPER_rlc.bin
-File: radeon/REDWOOD_me.bin
-File: radeon/REDWOOD_pfp.bin
-File: radeon/REDWOOD_rlc.bin
-
-Licence: Redistributable. See LICENSE.radeon_rlc for details.
 
 --------------------------------------------------------------------------

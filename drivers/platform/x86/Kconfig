@@ -27,8 +27,6 @@ config ACER_WMI
 	depends on ACPI_WMI
 	select INPUT_SPARSEKMAP
 	# Acer WMI depends on ACPI_VIDEO when ACPI is enabled
-	# but for select to work, need to select ACPI_VIDEO's dependencies, ick
-        select VIDEO_OUTPUT_CONTROL if ACPI
         select ACPI_VIDEO if ACPI
 	---help---
 	  This is a driver for newer Acer (and Wistron) laptops. It adds
@@ -54,6 +52,18 @@ config ACERHDF
 
 	  If you have an Acer Aspire One netbook, say Y or M
 	  here.
+
+config ALIENWARE_WMI
+	tristate "Alienware Special feature control"
+	depends on ACPI
+	depends on LEDS_CLASS
+	depends on NEW_LEDS
+	depends on ACPI_WMI
+	---help---
+	 This is a driver for controlling Alienware BIOS driven
+	 features.  It exposes an interface for controlling the AlienFX
+	 zones on Alienware machines that don't contain a dedicated AlienFX
+	 USB MCU such as the X51 and X51-R2.
 
 config ASUS_LAPTOP
 	tristate "Asus Laptop Extras"
@@ -198,7 +208,7 @@ config HP_ACCEL
 	  be called hp_accel.
 
 config HP_WIRELESS
-	tristate "HP WIRELESS"
+	tristate "HP wireless button"
 	depends on ACPI
 	depends on INPUT
 	help
@@ -445,30 +455,9 @@ config THINKPAD_ACPI_HOTKEY_POLL
 	  If you are not sure, say Y here.  The driver enables polling only if
 	  it is strictly necessary to do so.
 
-config THINKPAD_EC
-	tristate
-	depends on X86
-	---help---
-	  This is a low-level driver for accessing the ThinkPad H8S embedded
-	  controller over the LPC bus (not to be confused with the ACPI Embedded
-	  Controller interface).
-
-config TP_SMAPI
-	tristate "ThinkPad SMAPI Support"
-	depends on X86
-	select THINKPAD_EC
-	default n
-	help
-	  This adds SMAPI support on Lenovo/IBM ThinkPads, for features such
-	  as battery charging control. For more information about this driver
-	  see <http://www.thinkwiki.org/wiki/tp_smapi>.
-
-	  If you have a Lenovo/IBM ThinkPad laptop, say Y or M here.
-
 config SENSORS_HDAPS
 	tristate "Thinkpad Hard Drive Active Protection System (hdaps)"
 	depends on INPUT && X86
-	select THINKPAD_EC
 	select INPUT_POLLDEV
 	default n
 	help
@@ -839,13 +828,5 @@ config PVPANIC
 	  This driver provides support for the pvpanic device.  pvpanic is
 	  a paravirtualized device provided by QEMU; it lets a virtual machine
 	  (guest) communicate panic events to the host.
-
-config INTEL_BAYTRAIL_MBI
-	tristate
-	depends on PCI
-	---help---
-	  Needed on Baytrail platforms for access to the IOSF Sideband Mailbox
-	  Interface. This is a requirement for systems that need to configure
-	  the PUNIT for power management features such as RAPL.
 
 endif # X86_PLATFORM_DEVICES

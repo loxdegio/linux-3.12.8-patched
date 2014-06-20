@@ -703,7 +703,7 @@ kdb_printit:
 			}
 		}
 		while (c) {
-			c->write(c, kdb_buffer, retlen, 7); /* 7 == KERN_DEBUG */
+			c->write(c, kdb_buffer, retlen);
 			touch_nmi_watchdog();
 			c = c->next;
 		}
@@ -764,7 +764,7 @@ kdb_printit:
 			}
 		}
 		while (c) {
-			c->write(c, moreprompt, strlen(moreprompt), 7); /* 7 == KERN_DEBUG */
+			c->write(c, moreprompt, strlen(moreprompt));
 			touch_nmi_watchdog();
 			c = c->next;
 		}

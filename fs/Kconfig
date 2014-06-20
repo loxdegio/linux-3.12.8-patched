@@ -88,7 +88,6 @@ if BLOCK
 menu "DOS/FAT/NT Filesystems"
 
 source "fs/fat/Kconfig"
-source "fs/exfat/Kconfig"
 source "fs/ntfs/Kconfig"
 
 endmenu
@@ -97,6 +96,7 @@ endif # BLOCK
 menu "Pseudo filesystems"
 
 source "fs/proc/Kconfig"
+source "fs/kernfs/Kconfig"
 source "fs/sysfs/Kconfig"
 
 config TMPFS
@@ -209,7 +209,6 @@ source "fs/ufs/Kconfig"
 source "fs/exofs/Kconfig"
 source "fs/f2fs/Kconfig"
 source "fs/efivarfs/Kconfig"
-source "fs/aufs/Kconfig"
 
 endif # MISC_FILESYSTEMS
 

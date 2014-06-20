@@ -23,8 +23,6 @@ obj-$(CONFIG_TC1100_WMI)	+= tc1100-wmi.o
 obj-$(CONFIG_SONY_LAPTOP)	+= sony-laptop.o
 obj-$(CONFIG_IDEAPAD_LAPTOP)	+= ideapad-laptop.o
 obj-$(CONFIG_THINKPAD_ACPI)	+= thinkpad_acpi.o
-obj-$(CONFIG_THINKPAD_EC)	+= thinkpad_ec.o
-obj-$(CONFIG_TP_SMAPI)		+= tp_smapi.o
 obj-$(CONFIG_SENSORS_HDAPS)	+= hdaps.o
 obj-$(CONFIG_FUJITSU_LAPTOP)	+= fujitsu-laptop.o
 obj-$(CONFIG_FUJITSU_TABLET)	+= fujitsu-tablet.o
@@ -57,4 +55,4 @@ obj-$(CONFIG_INTEL_RST)		+= intel-rst.o
 obj-$(CONFIG_INTEL_SMARTCONNECT)	+= intel-smartconnect.o
 
 obj-$(CONFIG_PVPANIC)           += pvpanic.o
-obj-$(CONFIG_INTEL_BAYTRAIL_MBI)	+= intel_baytrail.o
+obj-$(CONFIG_ALIENWARE_WMI)	+= alienware-wmi.o

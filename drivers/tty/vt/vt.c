@@ -71,7 +71,6 @@
  */
 
 #include <linux/module.h>
-#include <linux/moduleparam.h>
 #include <linux/types.h>
 #include <linux/sched.h>
 #include <linux/tty.h>
@@ -1591,9 +1590,9 @@ static void restore_cur(struct vc_data *vc)
 	vc->vc_need_wrap = 0;
 }
 
-enum { ESnormal, ESesc, ESsquare, ESgetpars, ESgotpars, ESfunckey,
+enum { ESnormal, ESesc, ESsquare, ESgetpars, ESfunckey,
 	EShash, ESsetG0, ESsetG1, ESpercent, ESignore, ESnonstd,
-	ESpalette };
+	ESpalette, ESosc };
 
 /* console_lock is held (except via vc_init()) */
 static void reset_terminal(struct vc_data *vc, int do_clear)
@@ -1653,11 +1652,15 @@ static void do_con_trol(struct tty_struct *tty, struct vc_data *vc, int c)
 	 *  Control characters can be used in the _middle_
 	 *  of an escape sequence.
 	 */
+	if (vc->vc_state == ESosc && c>=8 && c<=13) /* ... except for OSC */
+		return;
 	switch (c) {
 	case 0:
 		return;
 	case 7:
-		if (vc->vc_bell_duration)
+		if (vc->vc_state == ESosc)
+			vc->vc_state = ESnormal;
+		else if (vc->vc_bell_duration)
 			kd_mksound(vc->vc_bell_pitch, vc->vc_bell_duration);
 		return;
 	case 8:
@@ -1768,7 +1771,9 @@ static void do_con_trol(struct tty_struct *tty, struct vc_data *vc, int c)
 		} else if (c=='R') {   /* reset palette */
 			reset_palette(vc);
 			vc->vc_state = ESnormal;
-		} else
+		} else if (c>='0' && c<='9')
+			vc->vc_state = ESosc;
+		else
 			vc->vc_state = ESnormal;
 		return;
 	case ESpalette:
@@ -1808,9 +1813,7 @@ static void do_con_trol(struct tty_struct *tty, struct vc_data *vc, int c)
 			vc->vc_par[vc->vc_npar] *= 10;
 			vc->vc_par[vc->vc_npar] += c - '0';
 			return;
-		} else
-			vc->vc_state = ESgotpars;
-	case ESgotpars:
+		}
 		vc->vc_state = ESnormal;
 		switch(c) {
 		case 'h':
@@ -2023,6 +2026,8 @@ static void do_con_trol(struct tty_struct *tty, struct vc_data *vc, int c)
 		if (vc->vc_charset == 1)
 			vc->vc_translate = set_translate(vc->vc_G1_charset, vc);
 		vc->vc_state = ESnormal;
+		return;
+	case ESosc:
 		return;
 	default:
 		vc->vc_state = ESnormal;
@@ -2433,44 +2438,16 @@ int vt_kmsg_redirect(int new)
 		return kmsg_con;
 }
 
-#ifdef CONFIG_VT_CKO
-static unsigned int printk_color[8] __read_mostly = {
-	CONFIG_VT_PRINTK_EMERG_COLOR,	/* KERN_EMERG */
-	CONFIG_VT_PRINTK_ALERT_COLOR,	/* KERN_ALERT */
-	CONFIG_VT_PRINTK_CRIT_COLOR,	/* KERN_CRIT */
-	CONFIG_VT_PRINTK_ERR_COLOR,	/* KERN_ERR */
-	CONFIG_VT_PRINTK_WARNING_COLOR,	/* KERN_WARNING */
-	CONFIG_VT_PRINTK_NOTICE_COLOR,	/* KERN_NOTICE */
-	CONFIG_VT_PRINTK_INFO_COLOR,	/* KERN_INFO */
-	CONFIG_VT_PRINTK_DEBUG_COLOR,	/* KERN_DEBUG */
-};
-module_param_array(printk_color, uint, NULL, S_IRUGO | S_IWUSR);
-
-static inline void vc_set_color(struct vc_data *vc, unsigned char color)
-{
-	vc->vc_color = color_table[color & 0xF] |
-	               (color_table[(color >> 4) & 0x7] << 4) |
-	               (color & 0x80);
-	update_attr(vc);
-}
-#else
-static unsigned int printk_color[8];
-static inline void vc_set_color(const struct vc_data *vc, unsigned char c)
-{
-}
-#endif
-
 /*
  *	Console on virtual terminal
  *
  * The console must be locked when we get here.
  */
 
-static void vt_console_print(struct console *co, const char *b, unsigned count,
-			     unsigned int loglevel)
+static void vt_console_print(struct console *co, const char *b, unsigned count)
 {
 	struct vc_data *vc = vc_cons[fg_console].d;
-	unsigned char current_color, c;
+	unsigned char c;
 	static DEFINE_SPINLOCK(printing_lock);
 	const ushort *start;
 	ushort cnt = 0;
@@ -2506,20 +2483,11 @@ static void vt_console_print(struct console *co, const char *b, unsigned count,
 
 	start = (ushort *)vc->vc_pos;
 
-	/*
-	 * We always get a valid loglevel - <8> and "no level" is transformed
-	 * to <4> in the typical kernel.
-	 */
-	current_color = printk_color[loglevel];
-	vc_set_color(vc, current_color);
-
-
 	/* Contrived structure to try to emulate original need_wrap behaviour
 	 * Problems caused when we have need_wrap set on '\n' character */
 	while (count--) {
 		c = *b++;
 		if (c == 10 || c == 13 || c == 8 || vc->vc_need_wrap) {
-			vc_set_color(vc, vc->vc_def_color);
 			if (cnt > 0) {
 				if (CON_IS_VISIBLE(vc))
 					vc->vc_sw->con_putcs(vc, start, cnt, vc->vc_y, vc->vc_x);
@@ -2532,7 +2500,6 @@ static void vt_console_print(struct console *co, const char *b, unsigned count,
 				bs(vc);
 				start = (ushort *)vc->vc_pos;
 				myx = vc->vc_x;
-				vc_set_color(vc, current_color);
 				continue;
 			}
 			if (c != 13)
@@ -2540,7 +2507,6 @@ static void vt_console_print(struct console *co, const char *b, unsigned count,
 			cr(vc);
 			start = (ushort *)vc->vc_pos;
 			myx = vc->vc_x;
-			vc_set_color(vc, current_color);
 			if (c == 10 || c == 13)
 				continue;
 		}
@@ -2563,7 +2529,6 @@ static void vt_console_print(struct console *co, const char *b, unsigned count,
 			vc->vc_need_wrap = 1;
 		}
 	}
-	vc_set_color(vc, vc->vc_def_color);
 	set_cursor(vc);
 	notify_update(vc);
 

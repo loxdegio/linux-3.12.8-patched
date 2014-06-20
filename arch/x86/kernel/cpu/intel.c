@@ -28,15 +28,11 @@
 static void early_init_intel(struct cpuinfo_x86 *c)
 {
 	u64 misc_enable;
-	bool allow_fast_string = true;
 
 	/* Unmask CPUID levels if masked: */
 	if (c->x86 > 6 || (c->x86 == 6 && c->x86_model >= 0xd)) {
-		rdmsrl(MSR_IA32_MISC_ENABLE, misc_enable);
-
-		if (misc_enable & MSR_IA32_MISC_ENABLE_LIMIT_CPUID) {
-			misc_enable &= ~MSR_IA32_MISC_ENABLE_LIMIT_CPUID;
-			wrmsrl(MSR_IA32_MISC_ENABLE, misc_enable);
+		if (msr_clear_bit(MSR_IA32_MISC_ENABLE,
+				  MSR_IA32_MISC_ENABLE_LIMIT_CPUID_BIT) > 0) {
 			c->cpuid_level = cpuid_eax(0);
 			get_cpu_cap(c);
 		}
@@ -130,42 +126,20 @@ static void early_init_intel(struct cpuinfo_x86 *c)
 	 * Ingo Molnar reported a Pentium D (model 6) and a Xeon
 	 * (model 2) with the same problem.
 	 */
-	if (c->x86 == 15) {
-		allow_fast_string = false;
-
-		rdmsrl(MSR_IA32_MISC_ENABLE, misc_enable);
-		if (misc_enable & MSR_IA32_MISC_ENABLE_FAST_STRING) {
-			printk_once(KERN_INFO "kmemcheck: Disabling fast string operations\n");
-
-			misc_enable &= ~MSR_IA32_MISC_ENABLE_FAST_STRING;
-			wrmsrl(MSR_IA32_MISC_ENABLE, misc_enable);
-		}
-	}
+	if (c->x86 == 15)
+		if (msr_clear_bit(MSR_IA32_MISC_ENABLE,
+				  MSR_IA32_MISC_ENABLE_FAST_STRING_BIT) > 0)
+			pr_info("kmemcheck: Disabling fast string operations\n");
 #endif
 
 	/*
-	 * If BIOS didn't enable fast string operation, try to enable
-	 * it ourselves.  If that fails, then clear the fast string
-	 * and enhanced fast string CPU capabilities.
+	 * If fast string is not enabled in IA32_MISC_ENABLE for any reason,
+	 * clear the fast string and enhanced fast string CPU capabilities.
 	 */
 	if (c->x86 > 6 || (c->x86 == 6 && c->x86_model >= 0xd)) {
 		rdmsrl(MSR_IA32_MISC_ENABLE, misc_enable);
-
-		if (allow_fast_string &&
-		    !(misc_enable & MSR_IA32_MISC_ENABLE_FAST_STRING)) {
-			misc_enable |= MSR_IA32_MISC_ENABLE_FAST_STRING;
-			wrmsrl_safe(MSR_IA32_MISC_ENABLE, misc_enable);
-
-			/* Re-read to make sure it stuck. */
-			rdmsrl(MSR_IA32_MISC_ENABLE, misc_enable);
-
-			if (misc_enable & MSR_IA32_MISC_ENABLE_FAST_STRING)
-				printk_once(KERN_INFO FW_WARN "IA32_MISC_ENABLE.FAST_STRING_ENABLE was not set\n");
-		}
-
 		if (!(misc_enable & MSR_IA32_MISC_ENABLE_FAST_STRING)) {
-			if (allow_fast_string)
-				printk_once(KERN_INFO "Failed to enable fast string operations\n");
+			printk(KERN_INFO "Disabled fast string operations\n");
 			setup_clear_cpu_cap(X86_FEATURE_REP_GOOD);
 			setup_clear_cpu_cap(X86_FEATURE_ERMS);
 		}
@@ -212,10 +186,16 @@ static void intel_smp_check(struct cpuinfo_x86 *c)
 	}
 }
 
+static int forcepae;
+static int __init forcepae_setup(char *__unused)
+{
+	forcepae = 1;
+	return 1;
+}
+__setup("forcepae", forcepae_setup);
+
 static void intel_workarounds(struct cpuinfo_x86 *c)
 {
-	unsigned long lo, hi;
-
 #ifdef CONFIG_X86_F00F_BUG
 	/*
 	 * All current models of Pentium and Pentium with MMX technology CPUs
@@ -242,16 +222,26 @@ static void intel_workarounds(struct cpuinfo_x86 *c)
 		clear_cpu_cap(c, X86_FEATURE_SEP);
 
 	/*
+	 * PAE CPUID issue: many Pentium M report no PAE but may have a
+	 * functionally usable PAE implementation.
+	 * Forcefully enable PAE if kernel parameter "forcepae" is present.
+	 */
+	if (forcepae) {
+		printk(KERN_WARNING "PAE forced!\n");
+		set_cpu_cap(c, X86_FEATURE_PAE);
+		add_taint(TAINT_CPU_OUT_OF_SPEC, LOCKDEP_NOW_UNRELIABLE);
+	}
+
+	/*
 	 * P4 Xeon errata 037 workaround.
 	 * Hardware prefetcher may cause stale data to be loaded into the cache.
 	 */
 	if ((c->x86 == 15) && (c->x86_model == 1) && (c->x86_mask == 1)) {
-		rdmsr(MSR_IA32_MISC_ENABLE, lo, hi);
-		if ((lo & MSR_IA32_MISC_ENABLE_PREFETCH_DISABLE) == 0) {
-			printk (KERN_INFO "CPU: C0 stepping P4 Xeon detected.\n");
-			printk (KERN_INFO "CPU: Disabling hardware prefetching (Errata 037)\n");
-			lo |= MSR_IA32_MISC_ENABLE_PREFETCH_DISABLE;
-			wrmsr(MSR_IA32_MISC_ENABLE, lo, hi);
+		if (msr_set_bit(MSR_IA32_MISC_ENABLE,
+				MSR_IA32_MISC_ENABLE_PREFETCH_DISABLE_BIT)
+		    > 0) {
+			pr_info("CPU: C0 stepping P4 Xeon detected.\n");
+			pr_info("CPU: Disabling hardware prefetching (Errata 037)\n");
 		}
 	}
 
@@ -282,10 +272,6 @@ static void intel_workarounds(struct cpuinfo_x86 *c)
 		movsl_mask.mask = 7;
 		break;
 	}
-#endif
-
-#ifdef CONFIG_X86_NUMAQ
-	numaq_tsc_disable();
 #endif
 
 	intel_smp_check(c);
@@ -484,29 +470,6 @@ static void init_intel(struct cpuinfo_x86 *c)
 				" x86_energy_perf_policy(8)\n");
 			epb = (epb & ~0xF) | ENERGY_PERF_BIAS_NORMAL;
 			wrmsrl(MSR_IA32_ENERGY_PERF_BIAS, epb);
-		}
-	}
-
-	/* Enable monitor/mwait if BIOS didn't do it for us. */
-	if (!cpu_has(c, X86_FEATURE_MWAIT) && cpu_has(c, X86_FEATURE_XMM3)
-	    && c->x86 >= 6 && !(c->x86 == 6 && c->x86_model < 0x1c)
-	    && !(c->x86 == 0xf && c->x86_model < 3)) {
-		u64 misc_enable;
-		rdmsrl(MSR_IA32_MISC_ENABLE, misc_enable);
-		misc_enable |= MSR_IA32_MISC_ENABLE_MWAIT;
-
-		/*
-		 * Some non-SSE3 cpus will #GP.  We check for that,
-		 * but it can't hurt to be safe.
-		 */
-		wrmsr_safe(MSR_IA32_MISC_ENABLE, (u32)misc_enable,
-			   (u32)(misc_enable >> 32));
-
-		/* Re-read monitor capability. */
-		if (cpuid_ecx(1) & 0x8) {
-			set_cpu_cap(c, X86_FEATURE_MWAIT);
-
-			printk(KERN_WARNING FW_WARN "IA32_MISC_ENABLE.ENABLE_MONITOR_FSM was not set\n");
 		}
 	}
 }

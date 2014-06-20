@@ -319,7 +319,7 @@ static void log_store(int facility, int level,
 		else
 			free = log_first_idx - log_next_idx;
 
-		if (free > size + sizeof(struct printk_log))
+		if (free >= size + sizeof(struct printk_log))
 			break;
 
 		/* drop old messages until we have enough contiuous space */
@@ -327,7 +327,7 @@ static void log_store(int facility, int level,
 		log_first_seq++;
 	}
 
-	if (log_next_idx + size + sizeof(struct printk_log) >= log_buf_len) {
+	if (log_next_idx + size + sizeof(struct printk_log) > log_buf_len) {
 		/*
 		 * This message + an additional empty header does not fit
 		 * at the end of the buffer. Add an empty header with len == 0
@@ -351,7 +351,7 @@ static void log_store(int facility, int level,
 	else
 		msg->ts_nsec = local_clock();
 	memset(log_dict(msg) + dict_len, 0, pad_len);
-	msg->len = sizeof(struct printk_log) + text_len + dict_len + pad_len;
+	msg->len = size;
 
 	/* insert message */
 	log_next_idx += msg->len;
@@ -1277,7 +1277,7 @@ static void call_console_drivers(int level, const char *text, size_t len)
 		if (!cpu_online(smp_processor_id()) &&
 		    !(con->flags & CON_ANYTIME))
 			continue;
-		con->write(con, text, len, level);
+		con->write(con, text, len);
 	}
 }
 
@@ -1560,9 +1560,12 @@ asmlinkage int vprintk_emit(int facility, int level,
 					level = kern_level - '0';
 			case 'd':	/* KERN_DEFAULT */
 				lflags |= LOG_PREFIX;
-			case 'c':	/* KERN_CONT */
-				break;
 			}
+			/*
+			 * No need to check length here because vscnprintf
+			 * put '\0' at the end of the string. Only valid and
+			 * newly printed level is detected.
+			 */
 			text_len -= end_of_header - text;
 			text = (char *)end_of_header;
 		}
@@ -1671,7 +1674,7 @@ EXPORT_SYMBOL(printk_emit);
  *
  * See the vsnprintf() documentation for format string extensions over C99.
  */
-asmlinkage int printk(const char *fmt, ...)
+asmlinkage __visible int printk(const char *fmt, ...)
 {
 	va_list args;
 	int r;
@@ -1730,11 +1733,11 @@ void early_vprintk(const char *fmt, va_list ap)
 		char buf[512];
 		int n = vscnprintf(buf, sizeof(buf), fmt, ap);
 
-		early_console->write(early_console, buf, n, 0);
+		early_console->write(early_console, buf, n);
 	}
 }
 
-asmlinkage void early_printk(const char *fmt, ...)
+asmlinkage __visible void early_printk(const char *fmt, ...)
 {
 	va_list ap;
 
@@ -1880,6 +1883,7 @@ void suspend_console(void)
 	console_lock();
 	console_suspended = 1;
 	up(&console_sem);
+	mutex_release(&console_lock_dep_map, 1, _RET_IP_);
 }
 
 void resume_console(void)
@@ -1887,6 +1891,7 @@ void resume_console(void)
 	if (!console_suspend_enabled)
 		return;
 	down(&console_sem);
+	mutex_acquire(&console_lock_dep_map, 0, 0, _RET_IP_);
 	console_suspended = 0;
 	console_unlock();
 }

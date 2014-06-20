@@ -73,10 +73,17 @@ struct nf_conn_help {
 
 struct nf_conn {
 	/* Usage count in here is 1 for hash table/destruct timer, 1 per skb,
-           plus 1 for any connection(s) we are `master' for */
+	 * plus 1 for any connection(s) we are `master' for
+	 *
+	 * Hint, SKB address this struct and refcnt via skb->nfct and
+	 * helpers nf_conntrack_get() and nf_conntrack_put().
+	 * Helper nf_ct_put() equals nf_conntrack_put() by dec refcnt,
+	 * beware nf_ct_get() is different and don't inc refcnt.
+	 */
 	struct nf_conntrack ct_general;
 
-	spinlock_t lock;
+	spinlock_t	lock;
+	u16		cpu;
 
 	/* XXX should I move this to the tail ? - Y.K */
 	/* These are my tuples; original and reply */
@@ -103,22 +110,6 @@ struct nf_conn {
 	struct nf_ct_ext *ext;
 #ifdef CONFIG_NET_NS
 	struct net *ct_net;
-#endif
-
-#if defined(CONFIG_NETFILTER_XT_MATCH_LAYER7) || \
-    defined(CONFIG_NETFILTER_XT_MATCH_LAYER7_MODULE)
-	struct {
-		/*
-		 * e.g. "http". NULL before decision. "unknown" after decision
-		 * if no match.
-		 */
-		char *app_proto;
-		/*
-		 * application layer data so far. NULL after match decision.
-		 */
-		char *app_data;
-		unsigned int app_data_len;
-	} layer7;
 #endif
 
 	/* Storage reserved for other modules, must be the last member */

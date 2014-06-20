@@ -70,11 +70,7 @@ static long ratelimit_pages = 32;
 /*
  * Start background writeback (via writeback threads) at this percentage
  */
-#ifdef CONFIG_ZEN_INTERACTIVE
-int dirty_background_ratio = 20;
-#else
 int dirty_background_ratio = 10;
-#endif
 
 /*
  * dirty_background_bytes starts at 0 (disabled) so that it is a function of
@@ -91,11 +87,7 @@ int vm_highmem_is_dirtyable;
 /*
  * The generator of dirty data starts writeback at this percentage
  */
-#ifdef CONFIG_ZEN_INTERACTIVE
-int vm_dirty_ratio = 50;
-#else
 int vm_dirty_ratio = 20;
-#endif
 
 /*
  * vm_dirty_bytes starts at 0 (disabled) so that it is a function of
@@ -1570,9 +1562,9 @@ pause:
 		bdi_start_background_writeback(bdi);
 }
 
-void set_page_dirty_balance(struct page *page, int page_mkwrite)
+void set_page_dirty_balance(struct page *page)
 {
-	if (set_page_dirty(page) || page_mkwrite) {
+	if (set_page_dirty(page)) {
 		struct address_space *mapping = page_mapping(page);
 
 		if (mapping)

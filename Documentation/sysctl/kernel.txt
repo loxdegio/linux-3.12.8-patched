@@ -38,7 +38,6 @@ show up in /proc/sys/kernel:
 - hung_task_timeout_secs
 - hung_task_warnings
 - kexec_load_disabled
-- iso_cpu
 - kptr_restrict
 - kstack_depth_to_print       [ X86 only ]
 - l2cr                        [ PPC only ]
@@ -66,7 +65,6 @@ show up in /proc/sys/kernel:
 - randomize_va_space
 - real-root-dev               ==> Documentation/initrd.txt
 - reboot-cmd                  [ SPARC only ]
-- rr_interval
 - rtsig-max
 - rtsig-nr
 - sem
@@ -323,10 +321,11 @@ Possible values to set are in range {0..LONG_MAX/HZ}.
 
 ==============================================================
 
-hung_task_warning:
+hung_task_warnings:
 
 The maximum number of warnings to report. During a check interval
-When this value is reached, no more the warnings will be reported.
+if a hung task is detected, this value is decreased by 1.
+When this value reaches 0, no more warnings will be reported.
 This file shows up if CONFIG_DETECT_HUNG_TASK is enabled.
 
 -1: report an infinite number of warnings.
@@ -373,16 +372,6 @@ kstack_depth_to_print: (X86 only)
 
 Controls the number of words to print when dumping the raw
 kernel stack.
-
-==============================================================
-
-iso_cpu: (BFS CPU scheduler only).
-
-This sets the percentage cpu that the unprivileged SCHED_ISO tasks can
-run effectively at realtime priority, averaged over a rolling five
-seconds over the -whole- system, meaning all cpus.
-
-Set to 70 (percent) by default.
 
 ==============================================================
 
@@ -454,8 +443,7 @@ feature should be disabled. Otherwise, if the system overhead from the
 feature is too high then the rate the kernel samples for NUMA hinting
 faults may be controlled by the numa_balancing_scan_period_min_ms,
 numa_balancing_scan_delay_ms, numa_balancing_scan_period_max_ms,
-numa_balancing_scan_size_mb, numa_balancing_settle_count sysctls and
-numa_balancing_migrate_deferred.
+numa_balancing_scan_size_mb, and numa_balancing_settle_count sysctls.
 
 ==============================================================
 
@@ -495,13 +483,6 @@ rate for each task.
 
 numa_balancing_scan_size_mb is how many megabytes worth of pages are
 scanned for a given scan.
-
-numa_balancing_migrate_deferred is how many page migrations get skipped
-unconditionally, after a page migration is skipped because a page is shared
-with other tasks. This reduces page migration overhead, and determines
-how much stronger the "move task near its memory" policy scheduler becomes,
-versus the "move memory near its task" memory management policy, for workloads
-with shared memory.
 
 ==============================================================
 
@@ -715,20 +696,6 @@ rebooting. ???
 
 ==============================================================
 
-rr_interval: (BFS CPU scheduler only)
-
-This is the smallest duration that any cpu process scheduling unit
-will run for. Increasing this value can increase throughput of cpu
-bound tasks substantially but at the expense of increased latencies
-overall. Conversely decreasing it will decrease average and maximum
-latencies but at the expense of throughput. This value is in
-milliseconds and the default value chosen depends on the number of
-cpus available at scheduler initialisation with a minimum of 6.
-
-Valid values are from 1-1000.
-
-==============================================================
-
 rtsig-max & rtsig-nr:
 
 The file rtsig-max can be used to tune the maximum number
@@ -819,6 +786,8 @@ can be ORed together:
 1024 - A module from drivers/staging was loaded.
 2048 - The system is working around a severe firmware bug.
 4096 - An out-of-tree module has been loaded.
+8192 - An unsigned module has been loaded in a kernel supporting module
+       signature.
 
 ==============================================================
 

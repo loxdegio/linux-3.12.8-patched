@@ -193,6 +193,19 @@ static inline int pte_same(pte_t pte_a, pte_t pte_b)
 }
 #endif
 
+#ifndef __HAVE_ARCH_PTE_UNUSED
+/*
+ * Some architectures provide facilities to virtualization guests
+ * so that they can flag allocated pages as unused. This allows the
+ * host to transparently reclaim unused pages. This function returns
+ * whether the pte's page is unused.
+ */
+static inline int pte_unused(pte_t pte)
+{
+	return 0;
+}
+#endif
+
 #ifndef __HAVE_ARCH_PMD_SAME
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
 static inline int pmd_same(pmd_t pmd_a, pmd_t pmd_b)
@@ -502,25 +515,12 @@ extern void untrack_pfn(struct vm_area_struct *vma, unsigned long pfn,
 			unsigned long size);
 #endif
 
-#ifdef CONFIG_UKSM
-static inline int is_uksm_zero_pfn(unsigned long pfn)
-{
-	extern unsigned long uksm_zero_pfn;
-        return pfn == uksm_zero_pfn;
-}
-#else
-static inline int is_uksm_zero_pfn(unsigned long pfn)
-{
-        return 0;
-}
-#endif
-
 #ifdef __HAVE_COLOR_ZERO_PAGE
 static inline int is_zero_pfn(unsigned long pfn)
 {
 	extern unsigned long zero_pfn;
 	unsigned long offset_from_zero_pfn = pfn - zero_pfn;
-	return offset_from_zero_pfn <= (zero_page_mask >> PAGE_SHIFT) || is_uksm_zero_pfn(pfn);
+	return offset_from_zero_pfn <= (zero_page_mask >> PAGE_SHIFT);
 }
 
 #define my_zero_pfn(addr)	page_to_pfn(ZERO_PAGE(addr))
@@ -529,7 +529,7 @@ static inline int is_zero_pfn(unsigned long pfn)
 static inline int is_zero_pfn(unsigned long pfn)
 {
 	extern unsigned long zero_pfn;
-	return (pfn == zero_pfn) || (is_uksm_zero_pfn(pfn));
+	return pfn == zero_pfn;
 }
 
 static inline unsigned long my_zero_pfn(unsigned long addr)
