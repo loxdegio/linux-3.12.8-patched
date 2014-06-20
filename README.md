@@ -24,7 +24,7 @@ COMPILATION INSTRUCTIONS
   
 * If you have RHEL, CentOS, Fedora, SUSE or another enterprise linux based distro you can follow the SUSE-way:
   
-  https://www.suse.com/communities/conversations/compiling-de-linux-kernel-suse-way/
+  EN: https://www.suse.com/communities/conversations/compiling-de-linux-kernel-suse-way/
 
 * If you have Arch Linux you might already know how to compile a kernel, but I give you also the Arch-way:
 
