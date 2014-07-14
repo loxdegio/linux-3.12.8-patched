@@ -13,6 +13,7 @@
 #include <linux/swap.h>
 #include <linux/swapops.h>
 #include <linux/mmu_notifier.h>
+#include <linux/magic.h>
 
 #include <asm/elf.h>
 #include <asm/uaccess.h>
@@ -266,7 +267,15 @@ show_map_vma(struct seq_file *m, struct vm_area_struct *vma, int is_pid)
 
 	if (file) {
 		struct inode *inode = file_inode(vma->vm_file);
-		dev = inode->i_sb->s_dev;
+
+		if (inode->i_sb->s_magic == BTRFS_SUPER_MAGIC) {
+			struct kstat stat;
+
+			vfs_getattr(&file->f_path, &stat);
+			dev = stat.dev;
+		} else {
+			dev = inode->i_sb->s_dev;
+		}
 		ino = inode->i_ino;
 		pgoff = ((loff_t)vma->vm_pgoff) << PAGE_SHIFT;
 	}
@@ -559,8 +568,12 @@ static void show_smap_vma_flags(struct seq_file *m, struct vm_area_struct *vma)
 		[ilog2(VM_SOFTDIRTY)]	= "sd",
 #endif
 		[ilog2(VM_MIXEDMAP)]	= "mm",
+#ifndef CONFIG_XEN
 		[ilog2(VM_HUGEPAGE)]	= "hg",
 		[ilog2(VM_NOHUGEPAGE)]	= "nh",
+#else
+		[ilog2(VM_FOREIGN)]	= "fo",
+#endif
 		[ilog2(VM_MERGEABLE)]	= "mg",
 	};
 	size_t i;

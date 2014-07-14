@@ -3,7 +3,7 @@ linux-3.15.x-patched
 
 Versione del geek kernel con le patch scelte da me
 
-bfq suse
+bfq ck uksm suse
 
 Se vuoi scaricare questo repo e rimanere aggiornato con tutte le modifiche digita su terminale:
 

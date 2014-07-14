@@ -19,6 +19,7 @@
 #include <linux/of_platform.h>
 #include <linux/platform_device.h>
 #include <linux/pm_domain.h>
+#include <linux/dma-mapping.h>
 
 #include <asm/cacheflush.h>
 #include <asm/hardware/cache-l2x0.h>
@@ -335,6 +336,26 @@ static int __init exynos4_l2x0_cache_init(void)
 }
 early_initcall(exynos4_l2x0_cache_init);
 
+static u64 dma_mask64 = DMA_BIT_MASK(64);
+
+static int exynos5250_platform_notifier(struct notifier_block *nb,
+				  unsigned long event, void *__dev)
+{
+	struct device *dev = __dev;
+
+	if (event != BUS_NOTIFY_ADD_DEVICE)
+		return NOTIFY_DONE;
+
+	dev->dma_mask = &dma_mask64;
+	dev->coherent_dma_mask = DMA_BIT_MASK(64);
+
+	return NOTIFY_OK;
+}
+
+static struct notifier_block exynos5250_platform_nb = {
+	.notifier_call = exynos5250_platform_notifier,
+};
+
 static void __init exynos_dt_machine_init(void)
 {
 	struct device_node *i2c_np;
@@ -365,6 +386,9 @@ static void __init exynos_dt_machine_init(void)
 
 	exynos_cpuidle_init();
 	exynos_cpufreq_init();
+
+	if (of_machine_is_compatible("samsung,exynos5250"))
+		bus_register_notifier(&platform_bus_type, &exynos5250_platform_nb);
 
 	of_platform_populate(NULL, of_default_bus_match_table, NULL, NULL);
 }

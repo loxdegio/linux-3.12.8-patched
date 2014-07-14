@@ -36,6 +36,7 @@
 #include <linux/platform_device.h>
 #include <linux/log2.h>
 #include <linux/pm.h>
+#include <linux/efi.h>
 #include <linux/of.h>
 #include <linux/of_platform.h>
 #include <linux/dmi.h>
@@ -1187,6 +1188,11 @@ static bool platform_driver_registered;
 static int __init cmos_init(void)
 {
 	int retval = 0;
+
+#ifdef CONFIG_XEN
+	if (efi_enabled(EFI_RUNTIME_SERVICES))
+		return -ENODEV;
+#endif
 
 #ifdef	CONFIG_PNP
 	retval = pnp_register_driver(&cmos_pnp_driver);

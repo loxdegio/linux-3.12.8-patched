@@ -11,14 +11,14 @@
 
 #define uint64_aligned_t uint64_t __attribute__((aligned(8)))
 
-#define __DEFINE_GUEST_HANDLE(name, type) \
+#define __DEFINE_XEN_GUEST_HANDLE(name, type) \
 	typedef struct { union { type *p; uint64_aligned_t q; }; }  \
         __guest_handle_ ## name
 
 #define DEFINE_GUEST_HANDLE_STRUCT(name) \
-	__DEFINE_GUEST_HANDLE(name, struct name)
-#define DEFINE_GUEST_HANDLE(name) __DEFINE_GUEST_HANDLE(name, name)
-#define GUEST_HANDLE(name)        __guest_handle_ ## name
+	__DEFINE_XEN_GUEST_HANDLE(name, struct name)
+#define DEFINE_XEN_GUEST_HANDLE(name) __DEFINE_XEN_GUEST_HANDLE(name, name)
+#define XEN_GUEST_HANDLE(name)        __guest_handle_ ## name
 
 #define set_xen_guest_handle(hnd, val)			\
 	do {						\
@@ -53,6 +53,7 @@ DEFINE_GUEST_HANDLE(xen_ulong_t);
 
 /* Maximum number of virtual CPUs in multi-processor guests. */
 #define MAX_VIRT_CPUS 1
+#define XEN_LEGACY_MAX_VCPUS MAX_VIRT_CPUS
 
 struct arch_vcpu_info { };
 struct arch_shared_info { };

@@ -4126,7 +4126,7 @@ int pci_set_vga_state(struct pci_dev *dev, bool decode,
 	u16 cmd;
 	int rc;
 
-	WARN_ON((flags & PCI_VGA_STATE_CHANGE_DECODES) & (command_bits & ~(PCI_COMMAND_IO|PCI_COMMAND_MEMORY)));
+	WARN_ON((flags & PCI_VGA_STATE_CHANGE_DECODES) && (command_bits & ~(PCI_COMMAND_IO|PCI_COMMAND_MEMORY)));
 
 	/* ARCH specific VGA enables */
 	rc = pci_set_vga_state_arch(dev, decode, command_bits, flags);
@@ -4248,7 +4248,7 @@ void pci_reassigndev_resource_alignment(struct pci_dev *dev)
 
 	/* check if specified PCI is target device to reassign */
 	align = pci_specified_resource_alignment(dev);
-	if (!align)
+	if (!align && !pci_is_guestdev_to_reassign(dev))
 		return;
 
 	if (dev->hdr_type == PCI_HEADER_TYPE_NORMAL &&

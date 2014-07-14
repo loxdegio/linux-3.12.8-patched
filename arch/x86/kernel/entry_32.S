@@ -299,6 +299,41 @@ ENTRY(ret_from_fork)
 	CFI_ENDPROC
 END(ret_from_fork)
 
+#ifdef CONFIG_STACK_UNWIND
+ENTRY(arch_unwind_init_running)
+	CFI_STARTPROC
+	movl	4(%esp), %edx
+	movl	(%esp), %ecx
+	leal	4(%esp), %eax
+	movl	%ebx, PT_EBX(%edx)
+	xorl	%ebx, %ebx
+	movl	%ebx, PT_ECX(%edx)
+	movl	%ebx, PT_EDX(%edx)
+	movl	%esi, PT_ESI(%edx)
+	movl	%edi, PT_EDI(%edx)
+	movl	%ebp, PT_EBP(%edx)
+	movl	%ebx, PT_EAX(%edx)
+	movl	$__USER_DS, PT_DS(%edx)
+	movl	$__USER_DS, PT_ES(%edx)
+	movl	$__KERNEL_PERCPU, PT_FS(%edx)
+	movl	$__KERNEL_STACK_CANARY, PT_GS(%edx)
+	movl	%eax, PT_OLDESP(%edx)
+	movl	16(%esp), %eax
+	movl	%ebx, PT_ORIG_EAX(%edx)
+	movl	%ecx, PT_EIP(%edx)
+	movl	12(%esp), %ecx
+	movl	$__KERNEL_CS, PT_CS(%edx)
+	movl	%eax, 12(%esp)
+	movl	8(%esp), %eax
+	movl	%ecx, 8(%esp)
+	movl	%ebx, PT_EFLAGS(%edx)
+	movl	PT_EBX(%edx), %ebx
+	movl	$__KERNEL_DS, PT_OLDSS(%edx)
+	jmpl	*%eax
+	CFI_ENDPROC
+ENDPROC(arch_unwind_init_running)
+#endif
+
 ENTRY(ret_from_kernel_thread)
 	CFI_STARTPROC
 	pushl_cfi %eax
@@ -386,7 +421,7 @@ ENTRY(ia32_sysenter_target)
 	CFI_SIGNAL_FRAME
 	CFI_DEF_CFA esp, 0
 	CFI_REGISTER esp, ebp
-	movl TSS_sysenter_sp0(%esp),%esp
+	movl SYSENTER_stack_sp0(%esp),%esp
 sysenter_past_esp:
 	/*
 	 * Interrupts are disabled here, but we can't trace it until
@@ -431,9 +466,10 @@ sysenter_past_esp:
 	jnz sysenter_audit
 sysenter_do_call:
 	cmpl $(NR_syscalls), %eax
-	jae syscall_badsys
+	jae sysenter_badsys
 	call *sys_call_table(,%eax,4)
 	movl %eax,PT_EAX(%esp)
+sysenter_after_call:
 	LOCKDEP_SYS_EXIT
 	DISABLE_INTERRUPTS(CLBR_ANY)
 	TRACE_IRQS_OFF
@@ -551,11 +587,6 @@ ENTRY(iret_exc)
 
 	CFI_RESTORE_STATE
 ldt_ss:
-	larl PT_OLDSS(%esp), %eax
-	jnz restore_nocheck
-	testl $0x00400000, %eax		# returning to 32bit stack?
-	jnz restore_nocheck		# allright, normal return
-
 #ifdef CONFIG_PARAVIRT
 	/*
 	 * The kernel can't run on a non-flat stack if paravirt mode
@@ -688,7 +719,12 @@ END(syscall_fault)
 
 syscall_badsys:
 	movl $-ENOSYS,PT_EAX(%esp)
-	jmp resume_userspace
+	jmp syscall_exit
+END(syscall_badsys)
+
+sysenter_badsys:
+	movl $-ENOSYS,PT_EAX(%esp)
+	jmp sysenter_after_call
 END(syscall_badsys)
 	CFI_ENDPROC
 /*
@@ -966,7 +1002,7 @@ END(spurious_interrupt_bug)
  */
 	.popsection
 
-#ifdef CONFIG_XEN
+#ifdef CONFIG_PARAVIRT_XEN
 /* Xen doesn't set %esp to be precisely what the normal sysenter
    entrypoint expects, so fix it up before using the normal path. */
 ENTRY(xen_sysenter_target)
@@ -1056,7 +1092,7 @@ ENDPROC(xen_failsafe_callback)
 BUILD_INTERRUPT3(xen_hvm_callback_vector, HYPERVISOR_CALLBACK_VECTOR,
 		xen_evtchn_do_upcall)
 
-#endif	/* CONFIG_XEN */
+#endif	/* CONFIG_PARAVIRT_XEN */
 
 #if IS_ENABLED(CONFIG_HYPERV)
 
@@ -1306,7 +1342,7 @@ END(page_fault)
  * that sets up the real kernel stack. Check here, since we can't
  * allow the wrong stack to be used.
  *
- * "TSS_sysenter_sp0+12" is because the NMI/debug handler will have
+ * "SYSENTER_stack_sp0+12" is because the NMI/debug handler will have
  * already pushed 3 words if it hits on the sysenter instruction:
  * eflags, cs and eip.
  *
@@ -1318,7 +1354,7 @@ END(page_fault)
 	cmpw $__KERNEL_CS, 4(%esp)
 	jne \ok
 \label:
-	movl TSS_sysenter_sp0 + \offset(%esp), %esp
+	movl SYSENTER_stack_sp0 + \offset(%esp), %esp
 	CFI_DEF_CFA esp, 0
 	CFI_UNDEFINED eip
 	pushfl_cfi

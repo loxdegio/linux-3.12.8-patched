@@ -48,6 +48,9 @@ static struct of_device_id legacy_serial_parents[] __initdata = {
 static unsigned int legacy_serial_count;
 static int legacy_serial_console = -1;
 
+static const upf_t legacy_port_flags = UPF_BOOT_AUTOCONF | UPF_SKIP_TEST |
+	UPF_SHARE_IRQ | UPF_FIXED_PORT;
+
 static unsigned int tsi_serial_in(struct uart_port *p, int offset)
 {
 	unsigned int tmp;
@@ -153,8 +156,6 @@ static int __init add_legacy_soc_port(struct device_node *np,
 {
 	u64 addr;
 	const __be32 *addrp;
-	upf_t flags = UPF_BOOT_AUTOCONF | UPF_SKIP_TEST | UPF_SHARE_IRQ
-		| UPF_FIXED_PORT;
 	struct device_node *tsi = of_get_parent(np);
 
 	/* We only support ports that have a clock frequency properly
@@ -185,9 +186,11 @@ static int __init add_legacy_soc_port(struct device_node *np,
 	 * IO port value. It will be fixed up later along with the irq
 	 */
 	if (tsi && !strcmp(tsi->type, "tsi-bridge"))
-		return add_legacy_port(np, -1, UPIO_TSI, addr, addr, NO_IRQ, flags, 0);
+		return add_legacy_port(np, -1, UPIO_TSI, addr, addr,
+				       NO_IRQ, legacy_port_flags, 0);
 	else
-		return add_legacy_port(np, -1, UPIO_MEM, addr, addr, NO_IRQ, flags, 0);
+		return add_legacy_port(np, -1, UPIO_MEM, addr, addr,
+				       NO_IRQ, legacy_port_flags, 0);
 }
 
 static int __init add_legacy_isa_port(struct device_node *np,
@@ -233,7 +236,7 @@ static int __init add_legacy_isa_port(struct device_node *np,
 
 	/* Add port, irq will be dealt with later */
 	return add_legacy_port(np, index, UPIO_PORT, be32_to_cpu(reg[1]),
-			       taddr, NO_IRQ, UPF_BOOT_AUTOCONF, 0);
+			       taddr, NO_IRQ, legacy_port_flags, 0);
 
 }
 
@@ -306,7 +309,7 @@ static int __init add_legacy_pci_port(struct device_node *np,
 	 * IO port value. It will be fixed up later along with the irq
 	 */
 	return add_legacy_port(np, index, iotype, base, addr, NO_IRQ,
-			       UPF_BOOT_AUTOCONF, np != pci_dev);
+			       legacy_port_flags, np != pci_dev);
 }
 #endif
 
@@ -547,6 +550,55 @@ device_initcall(serial_dev_init);
 
 
 #ifdef CONFIG_SERIAL_8250_CONSOLE
+#if defined(CONFIG_PPC_PSERIES) && defined(CONFIG_SERIAL_8250_CONSOLE)
+/*
+ * Handle the SysRq ^O Hack also via ttyS0 on POWER4 systems
+ * but only on the system console, see asm/serial.h
+ * If they run in FullSystemPartition mode, the firmware console comes in via ttyS0
+ * But BREAK does not work via the HMC, to trigger sysrq.
+ * The same is required for Cell blades
+ */
+int do_sysrq_via_ctrl_o;
+static const char __initdata *need_ctrl_o[] = {
+	"IBM,079", /* QS2x */
+	"IBM,0792-32G", /* QS21 */
+	"IBM,0793-2RZ", /* QS22 */
+	"IBM,7040-681",	/* p690 */
+	"IBM,7040-671", /* p670 */
+	"IBM,7039-651", /* p655 */
+	"IBM,7038-6M2", /* p650 */
+	"IBM,7028-6E4", /* p630 tower */
+	"IBM,7028-6C4", /* p630 rack */
+	"IBM,7029-6E3", /* p615 tower */
+	"IBM,7029-6C3", /* p615 rack */
+	NULL
+};
+static void __init detect_need_for_ctrl_o(void)
+{
+	struct device_node *root;
+	const char *model, *p;
+	int i;
+
+	root = of_find_node_by_path("/");
+	if (!root)
+		return;
+	model = of_get_property(root, "model", NULL);
+	if (model) {
+		i = 0;
+		while (need_ctrl_o[i]) {
+			p = need_ctrl_o[i];
+			if (strncmp(p, model, strlen(p)) == 0) {
+				do_sysrq_via_ctrl_o = 1;
+				DBG("Enable sysrq via CTRL o on model %s\n", model);
+				break;
+			}
+			i++;
+		}
+	}
+	of_node_put(root);
+}
+#endif
+
 /*
  * This is called very early, as part of console_init() (typically just after
  * time_init()). This function is respondible for trying to find a good
@@ -615,6 +667,9 @@ static int __init check_legacy_serial_console(void)
 	if (i >= legacy_serial_count)
 		goto not_found;
 
+#if defined(CONFIG_PPC_PSERIES) && defined(CONFIG_SERIAL_8250_CONSOLE)
+	detect_need_for_ctrl_o();
+#endif
 	of_node_put(prom_stdout);
 
 	DBG("Found serial console at ttyS%d\n", offset);

@@ -638,6 +638,8 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 			Range: 0 - 8192
 			Default: 64
 
+	hpet64		[X86-64,HPET] enable 64-bit mode of the HPET timer (bnc#456700)
+
 	com20020=	[HW,NET] ARCnet - COM20020 chipset
 			Format:
 			<io>[,<irq>[,<nodeID>[,<backplane>[,<ckp>[,<timeout>]]]]]
@@ -1102,6 +1104,24 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 	grcan.rxsize=	[HW] Sets the size of the rx buffer.
 			Format: <unsigned int> such that (rxsize & ~0x1fffc0) == 0.
 			Default: 1024
+
+	guestdev=	[PCI,ACPI,XEN]
+			Format: {<device path>|<sbdf>}][,{<device path>|<sbdf>}[,...]]
+			Format of device path: <hid>[:<uid>]-<dev>.<func>[-<dev>.<func>[,...]][+iomul]
+			Format of sbdf: [<segment>:]<bus>:<dev>.<func>[+iomul]
+			Specifies PCI device for guest domain.
+			If PCI-PCI bridge is specified, all PCI devices
+			behind PCI-PCI bridge are reserved.
+			+iomul means that this PCI function will share
+			IO ports with other +iomul functions under same
+			switch. NOTE: if +iomul is specfied, all the functions
+			of the device will share IO ports.
+
+	guestiomuldev=	[PCI,ACPI,XEN]
+			Format: [sbd][,<sbd>][,...]
+			Format of sbdf: [<segment>:]<bus>:<dev>
+			Note: function shouldn't be specified.
+			Specifies PCI device for IO port multiplexing driver.
 
 	hashdist=	[KNL,NUMA] Large hashes allocated during boot
 			are distributed across NUMA nodes.  Defaults on
@@ -2531,6 +2551,13 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 				only look for one device below a PCIe downstream
 				port.
 
+	pci_reserve=	[PCI]
+			Format: [<sbdf>[+IO<size>][+MEM<size>]][,<sbdf>...]
+			Format of sbdf: [<segment>:]<bus>:<dev>.<func>
+			Specifies the least reserved io size or memory size
+			which is assigned to PCI bridge even when no child
+			pci device exists. This is useful with PCI hotplug.
+
 	pcie_aspm=	[PCIE] Forcibly enable or disable PCIe Active State Power
 			Management.
 		off	Disable ASPM.
@@ -2872,6 +2899,10 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 			Format: <full_path>
 			Run specified binary instead of /init from the ramdisk,
 			used for early userspace startup. See initrd.
+
+	reassign_resources	[PCI,ACPI,XEN]
+			Use guestdev= parameter to reassign device's
+			resources, or specify =all here.
 
 	reboot=		[KNL]
 			Format (x86 or x86_64):
@@ -3327,6 +3358,14 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 
 	unknown_nmi_panic
 			[X86] Cause panic on unknown NMI.
+
+	unsupported	Allow loading of unsupported kernel modules:
+			0 = only allow supported modules,
+			1 = warn when loading unsupported modules,
+			2 = don't warn.
+
+			CONFIG_SUSE_KERNEL_SUPPORTED must be enabled for this
+			to have any effect.
 
 	usbcore.authorized_default=
 			[USB] Default USB device authorization:

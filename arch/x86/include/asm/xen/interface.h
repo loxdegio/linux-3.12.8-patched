@@ -10,17 +10,20 @@
 #define _ASM_X86_XEN_INTERFACE_H
 
 #ifdef __XEN__
-#define __DEFINE_GUEST_HANDLE(name, type) \
+#define ___DEFINE_XEN_GUEST_HANDLE(name, type) \
     typedef struct { type *p; } __guest_handle_ ## name
 #else
-#define __DEFINE_GUEST_HANDLE(name, type) \
+#define ___DEFINE_XEN_GUEST_HANDLE(name, type) \
     typedef type * __guest_handle_ ## name
 #endif
 
+#define __DEFINE_XEN_GUEST_HANDLE(name, type) \
+    ___DEFINE_XEN_GUEST_HANDLE(name, type);   \
+    ___DEFINE_XEN_GUEST_HANDLE(const_##name, const type)
 #define DEFINE_GUEST_HANDLE_STRUCT(name) \
-	__DEFINE_GUEST_HANDLE(name, struct name)
-#define DEFINE_GUEST_HANDLE(name) __DEFINE_GUEST_HANDLE(name, name)
-#define GUEST_HANDLE(name)        __guest_handle_ ## name
+	__DEFINE_XEN_GUEST_HANDLE(name, struct name)
+#define DEFINE_XEN_GUEST_HANDLE(name) __DEFINE_XEN_GUEST_HANDLE(name, name)
+#define XEN_GUEST_HANDLE(name)        __guest_handle_ ## name
 
 #ifdef __XEN__
 #if defined(__i386__)
@@ -75,7 +78,11 @@ DEFINE_GUEST_HANDLE(xen_ulong_t);
 #define MACH2PHYS_NR_ENTRIES  ((MACH2PHYS_VIRT_END-MACH2PHYS_VIRT_START)>>__MACH2PHYS_SHIFT)
 
 /* Maximum number of virtual CPUs in multi-processor guests. */
-#define MAX_VIRT_CPUS 32
+#define XEN_LEGACY_MAX_VCPUS 32
+
+#define XEN_HAVE_PV_GUEST_ENTRY 1
+
+#define XEN_HAVE_PV_UPCALL_MASK 1
 
 /*
  * SEGMENT DESCRIPTOR TABLES

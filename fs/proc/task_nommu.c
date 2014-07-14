@@ -7,6 +7,7 @@
 #include <linux/ptrace.h>
 #include <linux/slab.h>
 #include <linux/seq_file.h>
+#include <linux/magic.h>
 #include "internal.h"
 
 /*
@@ -142,7 +143,15 @@ static int nommu_vma_show(struct seq_file *m, struct vm_area_struct *vma,
 
 	if (file) {
 		struct inode *inode = file_inode(vma->vm_file);
-		dev = inode->i_sb->s_dev;
+
+		if (inode->i_sb->s_magic == BTRFS_SUPER_MAGIC) {
+			struct kstat stat;
+
+			vfs_getattr(&file->f_path, &stat);
+			dev = stat.dev;
+		} else {
+			dev = inode->i_sb->s_dev;
+		}
 		ino = inode->i_ino;
 		pgoff = (loff_t)vma->vm_pgoff << PAGE_SHIFT;
 	}
