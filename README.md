@@ -1,5 +1,7 @@
-linux-3.15.x-patched
+linux-3.15.10-patched
 ====================
+
+La versione 3.15.10 è EOL per la release 3.15
 
 Versione del geek kernel con le patch scelte da me
 
