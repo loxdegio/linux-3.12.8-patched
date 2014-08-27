@@ -78,7 +78,6 @@ int __acpi_release_global_lock(unsigned int *lock);
 	    : "0"(n_hi), "1"(n_lo))
 
 #ifdef CONFIG_ACPI
-
 extern int acpi_lapic;
 extern int acpi_ioapic;
 extern int acpi_noirq;
@@ -124,7 +123,6 @@ extern int (*acpi_suspend_lowlevel)(void);
  */
 static inline unsigned int acpi_processor_cstate_check(unsigned int max_cstate)
 {
-#ifndef CONFIG_PROCESSOR_EXTERNAL_CONTROL
 	/*
 	 * Early models (<=5) of AMD Opterons are not supposed to go into
 	 * C2 state.
@@ -139,7 +137,6 @@ static inline unsigned int acpi_processor_cstate_check(unsigned int max_cstate)
 	else if (amd_e400_c1e_detected)
 		return 1;
 	else
-#endif
 		return max_cstate;
 }
 
@@ -180,9 +177,7 @@ static inline void disable_acpi(void) { }
 
 #endif /* !CONFIG_ACPI */
 
-#ifndef CONFIG_XEN
 #define ARCH_HAS_POWER_INIT	1
-#endif
 
 #ifdef CONFIG_ACPI_NUMA
 extern int acpi_numa;

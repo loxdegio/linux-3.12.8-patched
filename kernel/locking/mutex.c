@@ -123,9 +123,6 @@ EXPORT_SYMBOL(mutex_lock);
 /*
  * Mutex spinning code migrated from kernel/sched/core.c
  */
-#ifndef arch_cpu_is_running
-#define arch_cpu_is_running(cpu) true
-#endif
 
 static inline bool owner_running(struct mutex *lock, struct task_struct *owner)
 {
@@ -140,8 +137,7 @@ static inline bool owner_running(struct mutex *lock, struct task_struct *owner)
 	 */
 	barrier();
 
-	return owner->on_cpu
-	       && arch_cpu_is_running(task_thread_info(owner)->cpu);
+	return owner->on_cpu;
 }
 
 /*

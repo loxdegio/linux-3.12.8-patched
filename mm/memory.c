@@ -777,12 +777,6 @@ struct page *vm_normal_page(struct vm_area_struct *vma, unsigned long addr,
 {
 	unsigned long pfn = pte_pfn(pte);
 
-#if defined(CONFIG_XEN) && defined(CONFIG_X86)
-	/* XEN: Covers user-space grant mappings (even of local pages). */
-	if (unlikely(vma->vm_flags & VM_FOREIGN))
-		return NULL;
-#endif
-
 	if (HAVE_PTE_SPECIAL) {
 		if (likely(!pte_special(pte)))
 			goto check_pfn;
@@ -814,9 +808,6 @@ struct page *vm_normal_page(struct vm_area_struct *vma, unsigned long addr,
 		return NULL;
 check_pfn:
 	if (unlikely(pfn > highest_memmap_pfn)) {
-#ifdef CONFIG_XEN
-		if (!(vma->vm_flags & VM_DONTEXPAND))
-#endif
 		print_bad_pte(vma, addr, pte, NULL);
 		return NULL;
 	}
@@ -1156,14 +1147,8 @@ again:
 				     page->index > details->last_index))
 					continue;
 			}
-#ifdef CONFIG_XEN
-			if (unlikely(vma->vm_ops && vma->vm_ops->zap_pte))
-				ptent = vma->vm_ops->zap_pte(vma, addr, pte,
-							     tlb->fullmm);
-			else
-#endif
-				ptent = ptep_get_and_clear_full(mm, addr, pte,
-								tlb->fullmm);
+			ptent = ptep_get_and_clear_full(mm, addr, pte,
+							tlb->fullmm);
 			tlb_remove_tlb_entry(tlb, pte, addr);
 			if (unlikely(!page)) {
 				uksm_unmap_zero_page(ptent);
@@ -1452,7 +1437,6 @@ void zap_page_range(struct vm_area_struct *vma, unsigned long start,
 	mmu_notifier_invalidate_range_end(mm, start, end);
 	tlb_finish_mmu(&tlb, start, end);
 }
-EXPORT_SYMBOL(zap_page_range);
 
 /**
  * zap_page_range_single - remove user pages in a given range
@@ -2610,10 +2594,6 @@ int apply_to_page_range(struct mm_struct *mm, unsigned long addr,
 	unsigned long end = addr + size;
 	int err;
 
-#ifdef CONFIG_XEN
-	if (!mm)
-		mm = &init_mm;
-#endif
 	BUG_ON(addr >= end);
 	pgd = pgd_offset(mm, addr);
 	do {
@@ -3570,7 +3550,7 @@ static int do_read_fault(struct mm_struct *mm, struct vm_area_struct *vma,
 	 * if page by the offset is not ready to be mapped (cold cache or
 	 * something).
 	 */
-	if (vma->vm_ops->map_pages) {
+	if (vma->vm_ops->map_pages && !(flags & FAULT_FLAG_NONLINEAR)) {
 		pte = pte_offset_map_lock(mm, pmd, address, &ptl);
 		do_fault_around(vma, address, pte, pgoff, flags);
 		if (!pte_same(*pte, orig_pte))
@@ -3974,9 +3954,6 @@ static int __handle_mm_fault(struct mm_struct *mm, struct vm_area_struct *vma,
 			}
 		}
 	}
-
-	/* THP should already have been handled */
-	BUG_ON(pmd_numa(*pmd));
 
 	/*
 	 * Use __pte_alloc instead of pte_alloc_map, because we can't

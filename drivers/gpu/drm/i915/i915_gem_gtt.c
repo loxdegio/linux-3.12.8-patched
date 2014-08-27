@@ -54,7 +54,7 @@ static int sanitize_enable_ppgtt(struct drm_device *dev, int enable_ppgtt)
 	if (enable_ppgtt == 2 && HAS_PPGTT(dev))
 		return 2;
 
-#if defined(CONFIG_INTEL_IOMMU) || defined(CONFIG_XEN)
+#ifdef CONFIG_INTEL_IOMMU
 	/* Disable ppgtt on SNB if VT-d is on. */
 	if (INTEL_INFO(dev)->gen == 6 && intel_iommu_gfx_mapped) {
 		DRM_INFO("Disabling PPGTT because VT-d is on\n");
@@ -1270,12 +1270,13 @@ static void ppgtt_unbind_vma(struct i915_vma *vma)
 			     true);
 }
 
+extern int intel_iommu_gfx_mapped;
 /* Certain Gen5 chipsets require require idling the GPU before
  * unmapping anything from the GTT when VT-d is enabled.
  */
 static inline bool needs_idle_maps(struct drm_device *dev)
 {
-#if defined(CONFIG_INTEL_IOMMU) || defined(CONFIG_XEN)
+#ifdef CONFIG_INTEL_IOMMU
 	/* Query intel_iommu to see if we need the workaround. Presumably that
 	 * was loaded first.
 	 */
@@ -1771,7 +1772,7 @@ static int setup_scratch_page(struct drm_device *dev)
 	get_page(page);
 	set_pages_uc(page, 1);
 
-#if defined(CONFIG_INTEL_IOMMU) || defined(CONFIG_XEN)
+#ifdef CONFIG_INTEL_IOMMU
 	dma_addr = pci_map_page(dev->pdev, page, 0, PAGE_SIZE,
 				PCI_DMA_BIDIRECTIONAL);
 	if (pci_dma_mapping_error(dev->pdev, dma_addr))
@@ -1810,6 +1811,13 @@ static inline unsigned int gen8_get_total_gtt_size(u16 bdw_gmch_ctl)
 	bdw_gmch_ctl &= BDW_GMCH_GGMS_MASK;
 	if (bdw_gmch_ctl)
 		bdw_gmch_ctl = 1 << bdw_gmch_ctl;
+
+#ifdef CONFIG_X86_32
+	/* Limit 32b platforms to a 2GB GGTT: 4 << 20 / pte size * PAGE_SIZE */
+	if (bdw_gmch_ctl > 4)
+		bdw_gmch_ctl = 4;
+#endif
+
 	return bdw_gmch_ctl << 20;
 }
 

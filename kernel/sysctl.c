@@ -141,7 +141,6 @@ static unsigned long dirty_bytes_min = 2 * PAGE_SIZE;
 /* this is needed for the proc_dointvec_minmax for [fs_]overflow UID and GID */
 static int maxolduid = 65535;
 static int minolduid;
-static int min_percpu_pagelist_fract = 8;
 
 static int ngroups_max = NGROUPS_MAX;
 static const int cap_last_cap = CAP_LAST_CAP;
@@ -757,15 +756,6 @@ static struct ctl_table kern_table[] = {
 		.extra1		= &pid_max_min,
 		.extra2		= &pid_max_max,
 	},
-#if defined(CONFIG_MODULES) && defined(CONFIG_SUSE_KERNEL_SUPPORTED)
-	{
-		.procname	= "unsupported",
-		.data		= &unsupported,
-		.maxlen		= sizeof(int),
-		.mode		= 0644,
-		.proc_handler	= &proc_dointvec,
-	},
-#endif
 	{
 		.procname	= "panic_on_oops",
 		.data		= &panic_on_oops,
@@ -966,13 +956,6 @@ static struct ctl_table kern_table[] = {
 		.extra2		= &one_hundred,
 	},
 #endif
-	{
-		.procname	= "suid_dumpable",
-		.data		= &suid_dumpable,
-		.maxlen		= sizeof(int),
-		.mode		= 0644,
-		.proc_handler	= proc_dointvec,
-	},
 #if defined(CONFIG_S390) && defined(CONFIG_SMP)
 	{
 		.procname	= "spin_retry",
@@ -982,7 +965,7 @@ static struct ctl_table kern_table[] = {
 		.proc_handler	= proc_dointvec,
 	},
 #endif
-#if defined(CONFIG_ACPI_SLEEP) && defined(CONFIG_X86) && !defined(CONFIG_ACPI_PV_SLEEP)
+#if	defined(CONFIG_ACPI_SLEEP) && defined(CONFIG_X86)
 	{
 		.procname	= "acpi_video_flags",
 		.data		= &acpi_realmode_flags,
@@ -1348,7 +1331,7 @@ static struct ctl_table vm_table[] = {
 		.maxlen		= sizeof(percpu_pagelist_fraction),
 		.mode		= 0644,
 		.proc_handler	= percpu_pagelist_fraction_sysctl_handler,
-		.extra1		= &min_percpu_pagelist_fract,
+		.extra1		= &zero,
 	},
 #ifdef CONFIG_MMU
 	{

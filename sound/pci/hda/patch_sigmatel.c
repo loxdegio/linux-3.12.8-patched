@@ -4175,6 +4175,7 @@ static const struct hda_model_fixup stac92hd95_models[] = {
 	{}
 };
 
+
 static int stac_parse_auto_config(struct hda_codec *codec)
 {
 	struct sigmatel_spec *spec = codec->spec;
@@ -4644,8 +4645,6 @@ static int patch_stac92hd95(struct hda_codec *codec)
 	}
 
 	codec->proc_widget_hook = stac92hd_proc_hook;
-
-	snd_hda_apply_fixup(codec, HDA_FIXUP_ACT_PROBE);
 
 	snd_hda_apply_fixup(codec, HDA_FIXUP_ACT_PROBE);
 

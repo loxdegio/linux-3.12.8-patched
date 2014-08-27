@@ -54,6 +54,8 @@ static void do_deferred_remove(struct work_struct *w);
 
 static DECLARE_WORK(deferred_remove_work, do_deferred_remove);
 
+static struct workqueue_struct *deferred_remove_workqueue;
+
 /*
  * For bio-based dm.
  * One of these is allocated per bio.
@@ -276,16 +278,24 @@ static int __init local_init(void)
 	if (r)
 		goto out_free_rq_tio_cache;
 
+	deferred_remove_workqueue = alloc_workqueue("kdmremove", WQ_UNBOUND, 1);
+	if (!deferred_remove_workqueue) {
+		r = -ENOMEM;
+		goto out_uevent_exit;
+	}
+
 	_major = major;
 	r = register_blkdev(_major, _name);
 	if (r < 0)
-		goto out_uevent_exit;
+		goto out_free_workqueue;
 
 	if (!_major)
 		_major = r;
 
 	return 0;
 
+out_free_workqueue:
+	destroy_workqueue(deferred_remove_workqueue);
 out_uevent_exit:
 	dm_uevent_exit();
 out_free_rq_tio_cache:
@@ -299,6 +309,7 @@ out_free_io_cache:
 static void local_exit(void)
 {
 	flush_scheduled_work();
+	destroy_workqueue(deferred_remove_workqueue);
 
 	kmem_cache_destroy(_rq_tio_cache);
 	kmem_cache_destroy(_io_cache);
@@ -377,25 +388,16 @@ int dm_deleting_md(struct mapped_device *md)
 static int dm_blk_open(struct block_device *bdev, fmode_t mode)
 {
 	struct mapped_device *md;
-	int retval = 0;
 
 	spin_lock(&_minor_lock);
 
 	md = bdev->bd_disk->private_data;
-	if (!md) {
-		retval = -ENXIO;
+	if (!md)
 		goto out;
-	}
 
 	if (test_bit(DMF_FREEING, &md->flags) ||
 	    dm_deleting_md(md)) {
 		md = NULL;
-		retval = -ENXIO;
-		goto out;
-	}
-	if (get_disk_ro(md->disk) && (mode & FMODE_WRITE)) {
-		md = NULL;
-		retval = -EROFS;
 		goto out;
 	}
 
@@ -405,7 +407,7 @@ static int dm_blk_open(struct block_device *bdev, fmode_t mode)
 out:
 	spin_unlock(&_minor_lock);
 
-	return retval;
+	return md ? 0 : -ENXIO;
 }
 
 static void dm_blk_close(struct gendisk *disk, fmode_t mode)
@@ -416,7 +418,7 @@ static void dm_blk_close(struct gendisk *disk, fmode_t mode)
 
 	if (atomic_dec_and_test(&md->open_count) &&
 	    (test_bit(DMF_DEFERRED_REMOVE, &md->flags)))
-		schedule_work(&deferred_remove_work);
+		queue_work(deferred_remove_workqueue, &deferred_remove_work);
 
 	dm_put(md);
 
@@ -509,25 +511,19 @@ retry:
 	if (!map || !dm_table_get_size(map))
 		goto out;
 
+	/* We only support devices that have a single target */
+	if (dm_table_get_num_targets(map) != 1)
+		goto out;
+
+	tgt = dm_table_get_target(map, 0);
+
 	if (dm_suspended_md(md)) {
 		r = -EAGAIN;
 		goto out;
 	}
 
-	if (cmd == BLKRRPART) {
-		/* Emulate Re-read partitions table */
-		kobject_uevent(&disk_to_dev(md->disk)->kobj, KOBJ_CHANGE);
-		r = 0;
-	} else {
-		/* We only support devices that have a single target */
-		if (dm_table_get_num_targets(map) != 1)
-			goto out;
-
-		tgt = dm_table_get_target(map, 0);
-
-		if (tgt->type->ioctl)
-			r = tgt->type->ioctl(tgt, cmd, arg);
-	}
+	if (tgt->type->ioctl)
+		r = tgt->type->ioctl(tgt, cmd, arg);
 
 out:
 	dm_put_live_table(md, srcu_idx);
@@ -2167,10 +2163,6 @@ static struct dm_table *__bind(struct mapped_device *md, struct dm_table *t,
 		set_bit(DMF_MERGE_IS_OPTIONAL, &md->flags);
 	else
 		clear_bit(DMF_MERGE_IS_OPTIONAL, &md->flags);
-	if (!(dm_table_get_mode(t) & FMODE_WRITE))
-		set_disk_ro(md->disk, 1);
-	else
-		set_disk_ro(md->disk, 0);
 	dm_sync_table(md);
 
 	return old_map;

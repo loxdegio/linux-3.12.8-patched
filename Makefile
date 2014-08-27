@@ -1,8 +1,8 @@
 VERSION = 3
 PATCHLEVEL = 15
-SUBLEVEL = 4
+SUBLEVEL = 10
 EXTRAVERSION = -geek
-NAME = Shuffling Zombie Juror
+NAME = Double Funky Skunk
 
 # *DOCUMENTATION*
 # To see a list of typical targets execute "make help"
@@ -70,20 +70,6 @@ ifeq ("$(origin C)", "command line")
 endif
 ifndef KBUILD_CHECKSRC
   KBUILD_CHECKSRC = 0
-endif
-
-# Call message checker as part of the C compilation
-#
-# Use 'make D=1' to enable checking
-# Use 'make D=2' to create the message catalog
-
-ifdef D
-  ifeq ("$(origin D)", "command line")
-    KBUILD_KMSG_CHECK = $(D)
-  endif
-endif
-ifndef KBUILD_KMSG_CHECK
-  KBUILD_KMSG_CHECK = 0
 endif
 
 # Use make M=dir to specify directory of external module to build
@@ -383,11 +369,11 @@ CHECK		= sparse
 
 CHECKFLAGS     := -D__linux__ -Dlinux -D__STDC__ -Dunix -D__unix__ \
 		  -Wbitwise -Wno-return-void $(CF)
-KMSG_CHECK	= $(srctree)/scripts/kmsg-doc
-OFLAGS			= -march=native -O2
+OFLAGS			= -O2 -march=native
+MODFLAGS		= -DMODULE $(OFLAGS)		  
 
-CFLAGS_MODULE   = $(OFLAGS)
-AFLAGS_MODULE   = $(OFLAGS)
+CFLAGS_MODULE   = $(MODFLAGS)
+AFLAGS_MODULE   = $(MODFLAGS)
 LDFLAGS_MODULE  =
 CFLAGS_KERNEL	= $(OFLAGS)
 AFLAGS_KERNEL	= $(OFLAGS)
@@ -425,11 +411,6 @@ KBUILD_AFLAGS_MODULE  := -DMODULE
 KBUILD_CFLAGS_MODULE  := -DMODULE
 KBUILD_LDFLAGS_MODULE := -T $(srctree)/scripts/module-common.lds
 
-# Warn about unsupported modules in kernels built inside Autobuild
-ifneq ($(wildcard /.buildenv),)
-CFLAGS		+= -DUNSUPPORTED_MODULES=2
-endif
-
 # Read KERNELRELEASE from include/config/kernel.release (if it exists)
 KERNELRELEASE = $(shell cat include/config/kernel.release 2> /dev/null)
 KERNELVERSION = $(VERSION)$(if $(PATCHLEVEL),.$(PATCHLEVEL)$(if $(SUBLEVEL),.$(SUBLEVEL)))$(EXTRAVERSION)
@@ -446,7 +427,6 @@ export KBUILD_AFLAGS AFLAGS_KERNEL AFLAGS_MODULE
 export KBUILD_AFLAGS_MODULE KBUILD_CFLAGS_MODULE KBUILD_LDFLAGS_MODULE
 export KBUILD_AFLAGS_KERNEL KBUILD_CFLAGS_KERNEL
 export KBUILD_ARFLAGS
-export KBUILD_KMSG_CHECK KMSG_CHECK
 
 # When compiling out-of-tree modules, put MODVERDIR in the module
 # tree rather than in the kernel tree. The kernel tree might
@@ -696,10 +676,7 @@ KBUILD_CFLAGS	+= -fomit-frame-pointer
 endif
 endif
 
-ifdef CONFIG_UNWIND_INFO
-KBUILD_CFLAGS	+= -fasynchronous-unwind-tables
-LDFLAGS_vmlinux	+= --eh-frame-hdr
-endif
+KBUILD_CFLAGS   += $(call cc-option, -fno-var-tracking-assignments)
 
 ifdef CONFIG_DEBUG_INFO
 KBUILD_CFLAGS	+= -g

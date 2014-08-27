@@ -17,8 +17,6 @@
 #include <linux/debugfs.h>
 #include <linux/delay.h>
 #include <linux/hardirq.h>
-#include <linux/printk.h>
-#include <linux/ratelimit.h>
 #include <linux/slab.h>
 #include <linux/export.h>
 
@@ -259,7 +257,17 @@ io_check_error(unsigned char reason, struct pt_regs *regs)
 		panic("NMI IOCK error: Not continuing");
 
 	/* Re-enable the IOCK line, wait for a few seconds */
-	clear_io_check_error(reason);
+	reason = (reason & NMI_REASON_CLEAR_MASK) | NMI_REASON_CLEAR_IOCHK;
+	outb(reason, NMI_REASON_PORT);
+
+	i = 20000;
+	while (--i) {
+		touch_nmi_watchdog();
+		udelay(100);
+	}
+
+	reason &= ~NMI_REASON_CLEAR_IOCHK;
+	outb(reason, NMI_REASON_PORT);
 }
 
 static __kprobes void

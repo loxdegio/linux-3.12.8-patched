@@ -27,10 +27,6 @@ u64 hw_nmi_get_sample_period(int watchdog_thresh)
 #endif
 
 #ifdef arch_trigger_all_cpu_backtrace
-#ifdef CONFIG_XEN
-#include <asm/ipi.h>
-#endif
-
 /* For reliability, we're prepared to waste bits here. */
 static DECLARE_BITMAP(backtrace_mask, NR_CPUS) __read_mostly;
 

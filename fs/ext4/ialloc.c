@@ -28,7 +28,6 @@
 #include "ext4_jbd2.h"
 #include "xattr.h"
 #include "acl.h"
-#include "richacl.h"
 
 #include <trace/events/ext4.h>
 
@@ -852,6 +851,13 @@ got:
 		goto out;
 	}
 
+	BUFFER_TRACE(group_desc_bh, "get_write_access");
+	err = ext4_journal_get_write_access(handle, group_desc_bh);
+	if (err) {
+		ext4_std_error(sb, err);
+		goto out;
+	}
+
 	/* We may have to initialize the block bitmap if it isn't already */
 	if (ext4_has_group_desc_csum(sb) &&
 	    gdp->bg_flags & cpu_to_le16(EXT4_BG_BLOCK_UNINIT)) {
@@ -886,13 +892,6 @@ got:
 			ext4_std_error(sb, err);
 			goto out;
 		}
-	}
-
-	BUFFER_TRACE(group_desc_bh, "get_write_access");
-	err = ext4_journal_get_write_access(handle, group_desc_bh);
-	if (err) {
-		ext4_std_error(sb, err);
-		goto out;
 	}
 
 	/* Update the relevant bg descriptor fields */
@@ -1014,11 +1013,7 @@ got:
 	if (err)
 		goto fail_drop;
 
-	if (EXT4_IS_RICHACL(dir))
-		err = ext4_init_richacl(handle, inode, dir);
-	else
-		err = ext4_init_acl(handle, inode, dir);
-
+	err = ext4_init_acl(handle, inode, dir);
 	if (err)
 		goto fail_free_drop;
 

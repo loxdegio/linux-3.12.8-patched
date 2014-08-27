@@ -803,6 +803,7 @@ enum intel_sbi_destination {
 #define QUIRK_PIPEA_FORCE (1<<0)
 #define QUIRK_LVDS_SSC_DISABLE (1<<1)
 #define QUIRK_INVERT_BRIGHTNESS (1<<2)
+#define QUIRK_BACKLIGHT_PRESENT (1<<3)
 
 struct intel_fbdev;
 struct intel_fbc_work;
@@ -2310,11 +2311,6 @@ int __i915_add_request(struct intel_ring_buffer *ring,
 	__i915_add_request(ring, NULL, NULL, seqno)
 int __must_check i915_wait_seqno(struct intel_ring_buffer *ring,
 				 uint32_t seqno);
-#ifdef CONFIG_XEN
-int i915_gem_mmap(struct file *filp, struct vm_area_struct *vma);
-#else
-#define i915_gem_mmap drm_gem_mmap
-#endif
 int i915_gem_fault(struct vm_area_struct *vma, struct vm_fault *vmf);
 int __must_check
 i915_gem_object_set_to_gtt_domain(struct drm_i915_gem_object *obj,

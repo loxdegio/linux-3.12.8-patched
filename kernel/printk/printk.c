@@ -45,8 +45,6 @@
 #include <linux/poll.h>
 #include <linux/irq_work.h>
 #include <linux/utsname.h>
-#include <linux/jhash.h>
-#include <linux/device.h>
 
 #include <asm/uaccess.h>
 
@@ -61,7 +59,7 @@
 
 /* We show everything that is MORE important than this.. */
 #define MINIMUM_CONSOLE_LOGLEVEL 1 /* Minimum loglevel we let people use */
-#define DEFAULT_CONSOLE_LOGLEVEL 4 /* anything MORE serious than KERN_WARNING */
+#define DEFAULT_CONSOLE_LOGLEVEL 7 /* anything MORE serious than KERN_DEBUG */
 
 int console_printk[4] = {
 	DEFAULT_CONSOLE_LOGLEVEL,	/* console_loglevel */
@@ -2476,7 +2474,7 @@ void wake_up_klogd(void)
 	preempt_enable();
 }
 
-int printk_sched(const char *fmt, ...)
+int printk_deferred(const char *fmt, ...)
 {
 	unsigned long flags;
 	va_list args;
@@ -2850,49 +2848,6 @@ void kmsg_dump_rewind(struct kmsg_dumper *dumper)
 	raw_spin_unlock_irqrestore(&logbuf_lock, flags);
 }
 EXPORT_SYMBOL_GPL(kmsg_dump_rewind);
-
-#ifdef CONFIG_KMSG_IDS
-
-/**
- * printk_hash - print a kernel message include a hash over the message
- * @prefix: message prefix including the ".%06x" for the hash
- * @fmt: format string
- */
-asmlinkage int printk_hash(const char *prefix, const char *fmt, ...)
-{
-	va_list args;
-	int r;
-
-	r = printk(prefix, jhash(fmt, strlen(fmt), 0) & 0xffffff);
-	va_start(args, fmt);
-	r += vprintk(fmt, args);
-	va_end(args);
-
-	return r;
-}
-EXPORT_SYMBOL(printk_hash);
-
-/**
- * printk_dev_hash - print a kernel message include a hash over the message
- * @prefix: message prefix including the ".%06x" for the hash
- * @dev: device this printk is all about
- * @fmt: format string
- */
-asmlinkage int printk_dev_hash(const char *prefix, const char *driver_name,
-			       const char *fmt, ...)
-{
-	va_list args;
-	int r;
-
-	r = printk(prefix, driver_name, jhash(fmt, strlen(fmt), 0) & 0xffffff);
-	va_start(args, fmt);
-	r += vprintk(fmt, args);
-	va_end(args);
-
-	return r;
-}
-EXPORT_SYMBOL(printk_dev_hash);
-#endif
 
 static char dump_stack_arch_desc_str[128];
 

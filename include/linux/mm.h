@@ -136,14 +136,8 @@ extern unsigned int kobjsize(const void *objp);
 #endif
 
 #define VM_MIXEDMAP	0x10000000	/* Can contain "struct page" and pure PFN pages */
-#ifndef CONFIG_XEN
 #define VM_HUGEPAGE	0x20000000	/* MADV_HUGEPAGE marked this vma */
 #define VM_NOHUGEPAGE	0x40000000	/* MADV_NOHUGEPAGE marked this vma */
-#else
-#define VM_HUGEPAGE	0
-#define VM_NOHUGEPAGE	0
-#define VM_FOREIGN	0x20000000	/* Has pages belonging to another VM */
-#endif
 #define VM_MERGEABLE	0x80000000	/* KSM may merge identical pages */
 
 #if defined(CONFIG_X86)
@@ -185,12 +179,6 @@ extern unsigned int kobjsize(const void *objp);
 
 /* This mask defines which mm->def_flags a process can inherit its parent */
 #define VM_INIT_DEF_MASK	VM_NOHUGEPAGE
-
-#ifdef CONFIG_XEN
-struct vm_foreign_map {
-	struct page **map;
-};
-#endif
 
 /*
  * mapping from the currently active vm_flags protection bits (the
@@ -1870,11 +1858,7 @@ int write_one_page(struct page *page, int wait);
 void task_dirty_inc(struct task_struct *tsk);
 
 /* readahead.c */
-#ifndef CONFIG_KERNEL_DESKTOP
-#define VM_MAX_READAHEAD	512	/* kbytes */
-#else
 #define VM_MAX_READAHEAD	128	/* kbytes */
-#endif
 #define VM_MIN_READAHEAD	16	/* kbytes (includes current page) */
 
 int force_page_cache_readahead(struct address_space *mapping, struct file *filp,

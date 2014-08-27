@@ -91,10 +91,9 @@ bs_die:
 
 	.section ".bsdata", "a"
 bugger_off_msg:
-	.ascii	"Direct floppy boot is not supported. "
-	.ascii	"Use a boot loader program instead.\r\n"
+	.ascii	"Use a boot loader.\r\n"
 	.ascii	"\n"
-	.ascii	"Remove disk and press any key to reboot ...\r\n"
+	.ascii	"Remove disk and press any key to reboot...\r\n"
 	.byte	0
 
 #ifdef CONFIG_EFI_STUB
@@ -108,7 +107,7 @@ coff_header:
 #else
 	.word	0x8664				# x86-64
 #endif
-	.word	3				# nr_sections
+	.word	4				# nr_sections
 	.long	0 				# TimeDateStamp
 	.long	0				# PointerToSymbolTable
 	.long	1				# NumberOfSymbols
@@ -249,6 +248,25 @@ section_table:
 	.word	0				# NumberOfRelocations
 	.word	0				# NumberOfLineNumbers
 	.long	0x60500020			# Characteristics (section flags)
+
+	#
+	# The offset & size fields are filled in by build.c.
+	#
+	.ascii	".bss"
+	.byte	0
+	.byte	0
+	.byte	0
+	.byte	0
+	.long	0
+	.long	0x0
+	.long	0				# Size of initialized data
+						# on disk
+	.long	0x0
+	.long	0				# PointerToRelocations
+	.long	0				# PointerToLineNumbers
+	.word	0				# NumberOfRelocations
+	.word	0				# NumberOfLineNumbers
+	.long	0xc8000080			# Characteristics (section flags)
 
 #endif /* CONFIG_EFI_STUB */
 
@@ -422,9 +440,6 @@ setup_data:		.quad 0			# 64-bit physical pointer to
 
 pref_address:		.quad LOAD_PHYSICAL_ADDR	# preferred load addr
 
-#ifdef CONFIG_XEN
-#define ZO_startup_32 0
-#endif
 #define ZO_INIT_SIZE	(ZO__end - ZO_startup_32 + ZO_z_extract_offset)
 #define VO_INIT_SIZE	(VO__end - VO__text)
 #if ZO_INIT_SIZE > VO_INIT_SIZE
@@ -439,7 +454,6 @@ handover_offset:	.long 0			# Filled in by build.c
 
 	.section ".entrytext", "ax"
 start_of_setup:
-#ifndef CONFIG_XEN
 # Force %es = %ds
 	movw	%ds, %ax
 	movw	%ax, %es
@@ -512,4 +526,3 @@ die:
 setup_corrupt:
 	.byte	7
 	.string	"No setup signature found...\n"
-#endif /* CONFIG_XEN */

@@ -3109,8 +3109,13 @@ static int pci_af_flr(struct pci_dev *dev, int probe)
 	if (probe)
 		return 0;
 
-	/* Wait for Transaction Pending bit clean */
-	if (pci_wait_for_pending(dev, pos + PCI_AF_STATUS, PCI_AF_STATUS_TP))
+	/*
+	 * Wait for Transaction Pending bit to clear.  A word-aligned test
+	 * is used, so we use the conrol offset rather than status and shift
+	 * the test bit to match.
+	 */
+	if (pci_wait_for_pending(dev, pos + PCI_AF_CTRL,
+				 PCI_AF_STATUS_TP << 8))
 		goto clear;
 
 	dev_err(&dev->dev, "transaction is not cleared; "
@@ -4248,7 +4253,7 @@ void pci_reassigndev_resource_alignment(struct pci_dev *dev)
 
 	/* check if specified PCI is target device to reassign */
 	align = pci_specified_resource_alignment(dev);
-	if (!align && !pci_is_guestdev_to_reassign(dev))
+	if (!align)
 		return;
 
 	if (dev->hdr_type == PCI_HEADER_TYPE_NORMAL &&

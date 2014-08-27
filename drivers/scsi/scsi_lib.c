@@ -806,6 +806,14 @@ void scsi_io_completion(struct scsi_cmnd *cmd, unsigned int good_bytes)
 			scsi_next_command(cmd);
 			return;
 		}
+	} else if (blk_rq_bytes(req) == 0 && result && !sense_deferred) {
+		/*
+		 * Certain non BLOCK_PC requests are commands that don't
+		 * actually transfer anything (FLUSH), so cannot use
+		 * good_bytes != blk_rq_bytes(req) as the signal for an error.
+		 * This sets the error explicitly for the problem case.
+		 */
+		error = __scsi_error_from_host_byte(cmd, result);
 	}
 
 	/* no bidi support for !REQ_TYPE_BLOCK_PC yet */
@@ -1649,17 +1657,6 @@ out_delay:
 	if (sdev->device_busy == 0)
 		blk_delay_queue(q, SCSI_QUEUE_DELAY);
 }
-
-struct scsi_device *scsi_device_from_queue(struct request_queue *q)
-{
-	struct scsi_device *sdev = NULL;
-
-	if (q->request_fn == scsi_request_fn)
-		sdev = q->queuedata;
-
-	return sdev;
-}
-EXPORT_SYMBOL_GPL(scsi_device_from_queue);
 
 u64 scsi_calculate_bounce_limit(struct Scsi_Host *shost)
 {

@@ -425,9 +425,6 @@ extern int panic_timeout;
 extern int panic_on_oops;
 extern int panic_on_unrecovered_nmi;
 extern int panic_on_io_nmi;
-#ifdef CONFIG_SUSE_KERNEL_SUPPORTED
-extern int unsupported;
-#endif
 extern int sysctl_panic_on_stackoverflow;
 /*
  * Only to be used by arch init code. If the user over-wrote the default
@@ -473,15 +470,6 @@ extern enum system_states {
 #define TAINT_FIRMWARE_WORKAROUND	11
 #define TAINT_OOT_MODULE		12
 #define TAINT_UNSIGNED_MODULE		13
-
-#ifdef CONFIG_SUSE_KERNEL_SUPPORTED
-/*
- * Take the upper bits to hopefully allow them
- * to stay the same for more than one release.
- */
-#define TAINT_NO_SUPPORT		30
-#define TAINT_EXTERNAL_SUPPORT		31
-#endif
 
 extern const char hex_asc[];
 #define hex_asc_lo(x)	hex_asc[((x) & 0x0f)]

@@ -50,7 +50,6 @@
 #include "xattr.h"
 #include "acl.h"
 #include "mballoc.h"
-#include "richacl.h"
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/ext4.h>
@@ -878,9 +877,7 @@ static struct inode *ext4_alloc_inode(struct super_block *sb)
 	ei = kmem_cache_alloc(ext4_inode_cachep, GFP_NOFS);
 	if (!ei)
 		return NULL;
-#ifdef CONFIG_EXT4_FS_RICHACL
-	ei->i_richacl = EXT4_RICHACL_NOT_CACHED;
-#endif
+
 	ei->vfs_inode.i_version = 1;
 	INIT_LIST_HEAD(&ei->i_prealloc_list);
 	spin_lock_init(&ei->i_prealloc_lock);
@@ -975,13 +972,6 @@ void ext4_clear_inode(struct inode *inode)
 	invalidate_inode_buffers(inode);
 	clear_inode(inode);
 	dquot_drop(inode);
-#ifdef CONFIG_EXT4_FS_RICHACL
-	if (EXT4_I(inode)->i_richacl &&
-		EXT4_I(inode)->i_richacl != EXT4_RICHACL_NOT_CACHED) {
-		richacl_put(EXT4_I(inode)->i_richacl);
-		EXT4_I(inode)->i_richacl = EXT4_RICHACL_NOT_CACHED;
-	}
-#endif
 	ext4_discard_preallocations(inode);
 	ext4_es_remove_extent(inode, 0, EXT_MAX_BLOCKS);
 	ext4_es_lru_del(inode);
@@ -1162,7 +1152,7 @@ enum {
 	Opt_bsd_df, Opt_minix_df, Opt_grpid, Opt_nogrpid,
 	Opt_resgid, Opt_resuid, Opt_sb, Opt_err_cont, Opt_err_panic, Opt_err_ro,
 	Opt_nouid32, Opt_debug, Opt_removed,
-	Opt_user_xattr, Opt_nouser_xattr, Opt_acl, Opt_richacl, Opt_noacl,
+	Opt_user_xattr, Opt_nouser_xattr, Opt_acl, Opt_noacl,
 	Opt_auto_da_alloc, Opt_noauto_da_alloc, Opt_noload,
 	Opt_commit, Opt_min_batch_time, Opt_max_batch_time, Opt_journal_dev,
 	Opt_journal_path, Opt_journal_checksum, Opt_journal_async_commit,
@@ -1200,7 +1190,6 @@ static const match_table_t tokens = {
 	{Opt_user_xattr, "user_xattr"},
 	{Opt_nouser_xattr, "nouser_xattr"},
 	{Opt_acl, "acl"},
-	{Opt_richacl, "richacl"},
 	{Opt_noacl, "noacl"},
 	{Opt_noload, "norecovery"},
 	{Opt_noload, "noload"},
@@ -1480,9 +1469,6 @@ static int handle_mount_opt(struct super_block *sb, char *opt, int token,
 	case Opt_nouser_xattr:
 		ext4_msg(sb, KERN_WARNING, deprecated_msg, opt, "3.5");
 		break;
-	case Opt_richacl:
-		sb->s_flags |= MS_RICHACL;
-		return 1;
 	case Opt_sb:
 		return 1;	/* handled by get_sb_block() */
 	case Opt_removed:
@@ -1538,8 +1524,6 @@ static int handle_mount_opt(struct super_block *sb, char *opt, int token,
 			arg = JBD2_DEFAULT_MAX_COMMIT_AGE;
 		sbi->s_commit_interval = HZ * arg;
 	} else if (token == Opt_max_batch_time) {
-		if (arg == 0)
-			arg = EXT4_DEF_MAX_BATCH_TIME;
 		sbi->s_max_batch_time = arg;
 	} else if (token == Opt_min_batch_time) {
 		sbi->s_min_batch_time = arg;
@@ -1746,10 +1730,6 @@ static int parse_options(char *options, struct super_block *sb,
 			return 0;
 		}
 	}
-#if defined(CONFIG_EXT4_FS_RICHACL) && defined(CONFIG_EXT4_FS_POSIX_ACL)
-	if (test_opt(sb, POSIX_ACL) && (sb->s_flags & MS_RICHACL))
-		clear_opt(sb, POSIX_ACL);
-#endif
 	return 1;
 }
 
@@ -1871,9 +1851,6 @@ static int _ext4_show_options(struct seq_file *seq, struct super_block *sb,
 		SEQ_OPTS_PRINT("init_itable=%u", sbi->s_li_wait_mult);
 	if (nodefs || sbi->s_max_dir_size_kb)
 		SEQ_OPTS_PRINT("max_dir_size_kb=%u", sbi->s_max_dir_size_kb);
-
-	if (sb->s_flags & MS_RICHACL)
-		SEQ_OPTS_PUTS("richacl");
 
 	ext4_show_quota_options(seq, sb);
 	return 0;
@@ -2819,10 +2796,11 @@ static void print_daily_error_info(unsigned long arg)
 	es = sbi->s_es;
 
 	if (es->s_error_count)
-		ext4_msg(sb, KERN_NOTICE, "error count: %u",
+		/* fsck newer than v1.41.13 is needed to clean this condition. */
+		ext4_msg(sb, KERN_NOTICE, "error count since last fsck: %u",
 			 le32_to_cpu(es->s_error_count));
 	if (es->s_first_error_time) {
-		printk(KERN_NOTICE "EXT4-fs (%s): initial error at %u: %.*s:%d",
+		printk(KERN_NOTICE "EXT4-fs (%s): initial error at time %u: %.*s:%d",
 		       sb->s_id, le32_to_cpu(es->s_first_error_time),
 		       (int) sizeof(es->s_first_error_func),
 		       es->s_first_error_func,
@@ -2836,7 +2814,7 @@ static void print_daily_error_info(unsigned long arg)
 		printk("\n");
 	}
 	if (es->s_last_error_time) {
-		printk(KERN_NOTICE "EXT4-fs (%s): last error at %u: %.*s:%d",
+		printk(KERN_NOTICE "EXT4-fs (%s): last error at time %u: %.*s:%d",
 		       sb->s_id, le32_to_cpu(es->s_last_error_time),
 		       (int) sizeof(es->s_last_error_func),
 		       es->s_last_error_func,
@@ -3408,7 +3386,6 @@ static int ext4_fill_super(struct super_block *sb, void *data, int silent)
 	int err = 0;
 	unsigned int journal_ioprio = DEFAULT_JOURNAL_IOPRIO;
 	ext4_group_t first_not_zeroed;
-	unsigned long acl_flags = 0;
 
 	sbi = kzalloc(sizeof(*sbi), GFP_KERNEL);
 	if (!sbi)
@@ -3591,12 +3568,8 @@ static int ext4_fill_super(struct super_block *sb, void *data, int silent)
 			clear_opt(sb, DELALLOC);
 	}
 
-	if (sb->s_flags & MS_RICHACL)
-		acl_flags = MS_RICHACL;
-	else if (test_opt(sb, POSIX_ACL))
-		acl_flags = MS_POSIXACL;
-
-	sb->s_flags = (sb->s_flags & ~(MS_POSIXACL | MS_RICHACL)) | acl_flags;
+	sb->s_flags = (sb->s_flags & ~MS_POSIXACL) |
+		(test_opt(sb, POSIX_ACL) ? MS_POSIXACL : 0);
 
 	if (le32_to_cpu(es->s_rev_level) == EXT4_GOOD_OLD_REV &&
 	    (EXT4_HAS_COMPAT_FEATURE(sb, ~0U) ||
@@ -3895,38 +3868,19 @@ static int ext4_fill_super(struct super_block *sb, void *data, int silent)
 			goto failed_mount2;
 		}
 	}
-
-	/*
-	 * set up enough so that it can read an inode,
-	 * and create new inode for buddy allocator
-	 */
-	sbi->s_gdb_count = db_count;
-	if (!test_opt(sb, NOLOAD) &&
-	    EXT4_HAS_COMPAT_FEATURE(sb, EXT4_FEATURE_COMPAT_HAS_JOURNAL))
-		sb->s_op = &ext4_sops;
-	else
-		sb->s_op = &ext4_nojournal_sops;
-
-	ext4_ext_init(sb);
-	err = ext4_mb_init(sb);
-	if (err) {
-		ext4_msg(sb, KERN_ERR, "failed to initialize mballoc (%d)",
-			 err);
-		goto failed_mount2;
-	}
-
 	if (!ext4_check_descriptors(sb, &first_not_zeroed)) {
 		ext4_msg(sb, KERN_ERR, "group descriptors corrupted!");
-		goto failed_mount2a;
+		goto failed_mount2;
 	}
 	if (EXT4_HAS_INCOMPAT_FEATURE(sb, EXT4_FEATURE_INCOMPAT_FLEX_BG))
 		if (!ext4_fill_flex_info(sb)) {
 			ext4_msg(sb, KERN_ERR,
 			       "unable to initialize "
 			       "flex_bg meta info!");
-			goto failed_mount2a;
+			goto failed_mount2;
 		}
 
+	sbi->s_gdb_count = db_count;
 	get_random_bytes(&sbi->s_next_generation, sizeof(u32));
 	spin_lock_init(&sbi->s_next_gen_lock);
 
@@ -3961,6 +3915,14 @@ static int ext4_fill_super(struct super_block *sb, void *data, int silent)
 	sbi->s_stripe = ext4_get_stripe_size(sbi);
 	sbi->s_extent_max_zeroout_kb = 32;
 
+	/*
+	 * set up enough so that it can read an inode
+	 */
+	if (!test_opt(sb, NOLOAD) &&
+	    EXT4_HAS_COMPAT_FEATURE(sb, EXT4_FEATURE_COMPAT_HAS_JOURNAL))
+		sb->s_op = &ext4_sops;
+	else
+		sb->s_op = &ext4_nojournal_sops;
 	sb->s_export_op = &ext4_export_ops;
 	sb->s_xattr = ext4_xattr_handlers;
 #ifdef CONFIG_QUOTA
@@ -4150,13 +4112,21 @@ no_journal:
 	if (err) {
 		ext4_msg(sb, KERN_ERR, "failed to reserve %llu clusters for "
 			 "reserved pool", ext4_calculate_resv_clusters(sb));
-		goto failed_mount5;
+		goto failed_mount4a;
 	}
 
 	err = ext4_setup_system_zone(sb);
 	if (err) {
 		ext4_msg(sb, KERN_ERR, "failed to initialize system "
 			 "zone (%d)", err);
+		goto failed_mount4a;
+	}
+
+	ext4_ext_init(sb);
+	err = ext4_mb_init(sb);
+	if (err) {
+		ext4_msg(sb, KERN_ERR, "failed to initialize mballoc (%d)",
+			 err);
 		goto failed_mount5;
 	}
 
@@ -4233,8 +4203,11 @@ failed_mount8:
 failed_mount7:
 	ext4_unregister_li_request(sb);
 failed_mount6:
-	ext4_release_system_zone(sb);
+	ext4_mb_release(sb);
 failed_mount5:
+	ext4_ext_release(sb);
+	ext4_release_system_zone(sb);
+failed_mount4a:
 	dput(sb->s_root);
 	sb->s_root = NULL;
 failed_mount4:
@@ -4258,14 +4231,11 @@ failed_mount3:
 	percpu_counter_destroy(&sbi->s_extent_cache_cnt);
 	if (sbi->s_mmp_tsk)
 		kthread_stop(sbi->s_mmp_tsk);
-failed_mount2a:
-	ext4_mb_release(sb);
 failed_mount2:
 	for (i = 0; i < db_count; i++)
 		brelse(sbi->s_group_desc[i]);
 	ext4_kvfree(sbi->s_group_desc);
 failed_mount:
-	ext4_ext_release(sb);
 	if (sbi->s_chksum_driver)
 		crypto_free_shash(sbi->s_chksum_driver);
 	if (sbi->s_proc) {
@@ -4812,7 +4782,6 @@ static int ext4_remount(struct super_block *sb, int *flags, char *data)
 	ext4_group_t g;
 	unsigned int journal_ioprio = DEFAULT_JOURNAL_IOPRIO;
 	int err = 0;
-	unsigned long acl_flags = 0;
 #ifdef CONFIG_QUOTA
 	int i, j;
 #endif
@@ -4871,12 +4840,8 @@ static int ext4_remount(struct super_block *sb, int *flags, char *data)
 	if (sbi->s_mount_flags & EXT4_MF_FS_ABORTED)
 		ext4_abort(sb, "Abort forced by user");
 
-	if (sb->s_flags & MS_RICHACL)
-		acl_flags = MS_RICHACL;
-	else if (test_opt(sb, POSIX_ACL))
-		acl_flags = MS_POSIXACL;
-
-	sb->s_flags = (sb->s_flags & ~(MS_POSIXACL | MS_RICHACL)) | acl_flags;
+	sb->s_flags = (sb->s_flags & ~MS_POSIXACL) |
+		(test_opt(sb, POSIX_ACL) ? MS_POSIXACL : 0);
 
 	es = sbi->s_es;
 

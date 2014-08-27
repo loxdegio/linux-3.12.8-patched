@@ -57,7 +57,6 @@ static const char *const version =
 
 #include <asm/dma.h>
 #include <asm/irq.h>
-#include <xen/xen_pvonhvm.h>
 
 /*
  * PCI device identifiers for "new style" Linux PCI Device Drivers
@@ -2920,9 +2919,6 @@ MODULE_LICENSE("GPL");
 
 static int __init pcnet32_init_module(void)
 {
-	if (xen_pvonhvm_unplugged_nics)
-		return -EBUSY;
-
 	pr_info("%s", version);
 
 	pcnet32_debug = netif_msg_init(debug, PCNET32_MSG_DEFAULT);

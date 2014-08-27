@@ -109,7 +109,6 @@ static ssize_t kexec_crash_size_show(struct kobject *kobj,
 {
 	return sprintf(buf, "%zu\n", crash_get_memory_size());
 }
-#ifndef CONFIG_XEN
 static ssize_t kexec_crash_size_store(struct kobject *kobj,
 				   struct kobj_attribute *attr,
 				   const char *buf, size_t count)
@@ -124,9 +123,6 @@ static ssize_t kexec_crash_size_store(struct kobject *kobj,
 	return ret < 0 ? ret : count;
 }
 KERNEL_ATTR_RW(kexec_crash_size);
-#else
-KERNEL_ATTR_RO(kexec_crash_size);
-#endif
 
 static ssize_t vmcoreinfo_show(struct kobject *kobj,
 			       struct kobj_attribute *attr, char *buf)
@@ -190,30 +186,6 @@ static struct bin_attribute notes_attr = {
 struct kobject *kernel_kobj;
 EXPORT_SYMBOL_GPL(kernel_kobj);
 
-#ifdef CONFIG_SUSE_KERNEL_SUPPORTED
-const char *supported_printable(int taint)
-{
-	int mask = TAINT_PROPRIETARY_MODULE|TAINT_NO_SUPPORT;
-	if ((taint & mask) == mask)
-		return "No, Proprietary and Unsupported modules are loaded";
-	else if (taint & TAINT_PROPRIETARY_MODULE)
-		return "No, Proprietary modules are loaded";
-	else if (taint & TAINT_NO_SUPPORT)
-		return "No, Unsupported modules are loaded";
-	else if (taint & TAINT_EXTERNAL_SUPPORT)
-		return "Yes, External";
-	else
-		return "Yes";
-}
-
-static ssize_t supported_show(struct kobject *kobj,
-			      struct kobj_attribute *attr, char *buf)
-{
-	return sprintf(buf, "%s\n", supported_printable(get_taint()));
-}
-KERNEL_ATTR_RO(supported);
-#endif
-
 static struct attribute * kernel_attrs[] = {
 	&fscaps_attr.attr,
 	&uevent_seqnum_attr.attr,
@@ -228,9 +200,6 @@ static struct attribute * kernel_attrs[] = {
 	&vmcoreinfo_attr.attr,
 #endif
 	&rcu_expedited_attr.attr,
-#ifdef CONFIG_SUSE_KERNEL_SUPPORTED
-	&supported_attr.attr,
-#endif
 	NULL
 };
 

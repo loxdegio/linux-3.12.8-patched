@@ -407,7 +407,7 @@ static int pstore_fill_super(struct super_block *sb, void *data, int silent)
 	if (!sb->s_root)
 		return -ENOMEM;
 
-	pstore_get_records(PGR_VERBOSE|PGR_POPULATE);
+	pstore_get_records(0);
 
 	return 0;
 }
