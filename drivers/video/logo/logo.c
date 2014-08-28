@@ -17,10 +17,6 @@
 #include <asm/setup.h>
 #endif
 
-#ifdef CONFIG_MIPS
-#include <asm/bootinfo.h>
-#endif
-
 static bool nologo;
 module_param(nologo, bool, 0);
 MODULE_PARM_DESC(nologo, "Disables startup logo");
@@ -67,14 +63,6 @@ const struct linux_logo * __init_refok fb_find_logo(int depth)
 		/* Generic Linux logo */
 		logo = &logo_linux_clut224;
 #endif
-#ifdef CONFIG_LOGO_LARRY_CLUT224
-		/* Gentoo-ised 224-colour Larry logo */
-		logo = &logo_larry_clut224;
-#endif
-#ifdef CONFIG_LOGO_LARRY_HEAD_CLUT224
-		/* Gentoo-ised 224-colour Larry head logo */
-		logo = &logo_larry_head_clut224;
-#endif
 #ifdef CONFIG_LOGO_BLACKFIN_CLUT224
 		/* Blackfin Linux logo */
 		logo = &logo_blackfin_clut224;
@@ -93,7 +81,7 @@ const struct linux_logo * __init_refok fb_find_logo(int depth)
 		logo = &logo_parisc_clut224;
 #endif
 #ifdef CONFIG_LOGO_SGI_CLUT224
-		/* SGI Linux logo on MIPS/MIPS64 and VISWS */
+		/* SGI Linux logo on MIPS/MIPS64 */
 		logo = &logo_sgi_clut224;
 #endif
 #ifdef CONFIG_LOGO_SUN_CLUT224

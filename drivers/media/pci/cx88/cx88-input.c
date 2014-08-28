@@ -419,10 +419,6 @@ int cx88_ir_init(struct cx88_core *core, struct pci_dev *pci)
 		rc_type          = RC_BIT_NEC;
 		ir->sampling     = 0xff00; /* address */
 		break;
-	case CX88_BOARD_BST_PS8312:
-		ir_codes         = RC_MAP_DVBSKY;
-		ir->sampling     = 0xff00; /* address */
-		break;
 	}
 
 	if (!ir_codes) {
@@ -473,7 +469,7 @@ int cx88_ir_init(struct cx88_core *core, struct pci_dev *pci)
 		dev->timeout = 10 * 1000 * 1000; /* 10 ms */
 	} else {
 		dev->driver_type = RC_DRIVER_SCANCODE;
-		dev->allowed_protos = rc_type;
+		rc_set_allowed_protocols(dev, rc_type);
 	}
 
 	ir->core = core;

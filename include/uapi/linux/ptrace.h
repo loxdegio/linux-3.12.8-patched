@@ -55,13 +55,11 @@
 
 #define PTRACE_PEEKSIGINFO	0x4209
 
-#ifdef __KERNEL__
 struct ptrace_peeksiginfo_args {
 	__u64 off;	/* from which siginfo to start */
 	__u32 flags;
 	__s32 nr;	/* how may siginfos to take */
 };
-#endif /* __KERNEL__ */
 
 #define PTRACE_GETSIGMASK	0x420a
 #define PTRACE_SETSIGMASK	0x420b

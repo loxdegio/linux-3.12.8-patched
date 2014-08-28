@@ -30,6 +30,8 @@ static unsigned int data_avail;
 static DECLARE_COMPLETION(have_data);
 static bool busy;
 
+static bool probe_done;
+
 static void random_recv_done(struct virtqueue *vq)
 {
 	/* We can get spurious callbacks, e.g. shared IRQs + virtio_pci. */
@@ -47,8 +49,7 @@ static void register_buffer(u8 *buf, size_t size)
 	sg_init_one(&sg, buf, size);
 
 	/* There should always be room for one buffer. */
-	if (virtqueue_add_inbuf(vq, &sg, 1, buf, GFP_KERNEL) < 0)
-		BUG();
+	virtqueue_add_inbuf(vq, &sg, 1, buf, GFP_KERNEL);
 
 	virtqueue_kick(vq);
 }
@@ -56,6 +57,13 @@ static void register_buffer(u8 *buf, size_t size)
 static int virtio_read(struct hwrng *rng, void *buf, size_t size, bool wait)
 {
 	int ret;
+
+	/*
+	 * Don't ask host for data till we're setup.  This call can
+	 * happen during hwrng_register(), after commit d9e7972619.
+	 */
+	if (unlikely(!probe_done))
+		return 0;
 
 	if (!busy) {
 		busy = true;
@@ -111,6 +119,7 @@ static int probe_common(struct virtio_device *vdev)
 		return err;
 	}
 
+	probe_done = true;
 	return 0;
 }
 
@@ -133,7 +142,7 @@ static void virtrng_remove(struct virtio_device *vdev)
 	remove_common(vdev);
 }
 
-#ifdef CONFIG_PM
+#ifdef CONFIG_PM_SLEEP
 static int virtrng_freeze(struct virtio_device *vdev)
 {
 	remove_common(vdev);
@@ -157,7 +166,7 @@ static struct virtio_driver virtio_rng_driver = {
 	.id_table =	id_table,
 	.probe =	virtrng_probe,
 	.remove =	virtrng_remove,
-#ifdef CONFIG_PM
+#ifdef CONFIG_PM_SLEEP
 	.freeze =	virtrng_freeze,
 	.restore =	virtrng_restore,
 #endif

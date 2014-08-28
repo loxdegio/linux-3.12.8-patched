@@ -47,7 +47,7 @@ static DEFINE_MUTEX(dvbdev_register_lock);
 
 static const char * const dnames[] = {
 	"video", "audio", "sec", "frontend", "demux", "dvr", "ca",
-	"net", "osd", "ci", "mod", "ns", "nsd"
+	"net", "osd"
 };
 
 #ifdef CONFIG_DVB_DYNAMIC_MINORS
@@ -68,35 +68,28 @@ static int dvb_device_open(struct inode *inode, struct file *file)
 {
 	struct dvb_device *dvbdev;
 
-	//mutex_lock(&dvbdev_mutex);
+	mutex_lock(&dvbdev_mutex);
 	down_read(&minor_rwsem);
 	dvbdev = dvb_minors[iminor(inode)];
 
 	if (dvbdev && dvbdev->fops) {
 		int err = 0;
-		const struct file_operations *old_fops;
+		const struct file_operations *new_fops;
 
-		file->private_data = dvbdev;
-		old_fops = file->f_op;
-		file->f_op = fops_get(dvbdev->fops);
-		if (file->f_op == NULL) {
-			file->f_op = old_fops;
+		new_fops = fops_get(dvbdev->fops);
+		if (!new_fops)
 			goto fail;
-		}
-		if(file->f_op->open)
+		file->private_data = dvbdev;
+		replace_fops(file, new_fops);
+		if (file->f_op->open)
 			err = file->f_op->open(inode,file);
-		if (err) {
-			fops_put(file->f_op);
-			file->f_op = fops_get(old_fops);
-		}
-		fops_put(old_fops);
 		up_read(&minor_rwsem);
-		//mutex_unlock(&dvbdev_mutex);
+		mutex_unlock(&dvbdev_mutex);
 		return err;
 	}
 fail:
 	up_read(&minor_rwsem);
-	//mutex_unlock(&dvbdev_mutex);
+	mutex_unlock(&dvbdev_mutex);
 	return -ENODEV;
 }
 
@@ -418,10 +411,8 @@ int dvb_usercopy(struct file *file,
 	}
 
 	/* call driver */
-	//mutex_lock(&dvbdev_mutex);
 	if ((err = func(file, cmd, parg)) == -ENOIOCTLCMD)
 		err = -ENOTTY;
-	//mutex_unlock(&dvbdev_mutex);
 
 	if (err < 0)
 		goto out;
@@ -440,7 +431,6 @@ out:
 	kfree(mbuf);
 	return err;
 }
-EXPORT_SYMBOL(dvb_usercopy);
 
 static int dvb_uevent(struct device *dev, struct kobj_uevent_env *env)
 {

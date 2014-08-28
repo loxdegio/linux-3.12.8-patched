@@ -23,7 +23,7 @@
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
-#define TPACPI_VERSION "0.24"
+#define TPACPI_VERSION "0.25"
 #define TPACPI_SYSFS_VERSION 0x020700
 
 /*
@@ -61,7 +61,6 @@
 #include <linux/freezer.h>
 #include <linux/delay.h>
 #include <linux/slab.h>
-
 #include <linux/nvram.h>
 #include <linux/proc_fs.h>
 #include <linux/seq_file.h>
@@ -74,20 +73,16 @@
 #include <linux/input.h>
 #include <linux/leds.h>
 #include <linux/rfkill.h>
-#include <asm/uaccess.h>
-
 #include <linux/dmi.h>
 #include <linux/jiffies.h>
 #include <linux/workqueue.h>
-
+#include <linux/acpi.h>
+#include <linux/pci_ids.h>
+#include <linux/thinkpad_acpi.h>
 #include <sound/core.h>
 #include <sound/control.h>
 #include <sound/initval.h>
-
-#include <acpi/acpi_drivers.h>
-
-#include <linux/pci_ids.h>
-
+#include <asm/uaccess.h>
 
 /* ThinkPad CMOS commands */
 #define TP_CMOS_VOLUME_DOWN	0
@@ -528,12 +523,6 @@ static acpi_handle ec_handle;
 TPACPI_HANDLE(ecrd, ec, "ECRD");	/* 570 */
 TPACPI_HANDLE(ecwr, ec, "ECWR");	/* 570 */
 
-TPACPI_HANDLE(battery, root, "\\_SB.PCI0.LPC.EC.HKEY",
-	   "\\_SB.PCI0.LPCB.EC.HKEY",		/* X121e, T430u */
-	   "\\_SB.PCI0.LPCB.H_EC.HKEY",		/* L430 */
-	   "\\_SB.PCI0.LPCB.EC0.HKEY",		/* Edge/S series */
-	   );
-
 TPACPI_HANDLE(cmos, root, "\\UCMS",	/* R50, R50e, R50p, R51, */
 					/* T4x, X31, X40 */
 	   "\\CMOS",		/* A3x, G4x, R32, T23, T30, X22-24, X30 */
@@ -706,6 +695,14 @@ static void __init drv_acpi_handle_init(const char *name,
 static acpi_status __init tpacpi_acpi_handle_locate_callback(acpi_handle handle,
 			u32 level, void *context, void **return_value)
 {
+	struct acpi_device *dev;
+	if (!strcmp(context, "video")) {
+		if (acpi_bus_get_device(handle, &dev))
+			return AE_OK;
+		if (strcmp(ACPI_VIDEO_HID, acpi_device_hid(dev)))
+			return AE_OK;
+	}
+
 	*(acpi_handle *)return_value = handle;
 
 	return AE_CTRL_TERMINATE;
@@ -718,10 +715,10 @@ static void __init tpacpi_acpi_handle_locate(const char *name,
 	acpi_status status;
 	acpi_handle device_found;
 
-	BUG_ON(!name || !hid || !handle);
+	BUG_ON(!name || !handle);
 	vdbg_printk(TPACPI_DBG_INIT,
 			"trying to locate ACPI handle for %s, using HID %s\n",
-			name, hid);
+			name, hid ? hid : "NULL");
 
 	memset(&device_found, 0, sizeof(device_found));
 	status = acpi_get_devices(hid, tpacpi_acpi_handle_locate_callback,
@@ -2324,53 +2321,55 @@ static void hotkey_read_nvram(struct tp_nvram_state *n, const u32 m)
 	}
 }
 
+#define TPACPI_COMPARE_KEY(__scancode, __member) \
+do { \
+	if ((event_mask & (1 << __scancode)) && \
+	    oldn->__member != newn->__member) \
+		tpacpi_hotkey_send_key(__scancode); \
+} while (0)
+
+#define TPACPI_MAY_SEND_KEY(__scancode) \
+do { \
+	if (event_mask & (1 << __scancode)) \
+		tpacpi_hotkey_send_key(__scancode); \
+} while (0)
+
+static void issue_volchange(const unsigned int oldvol,
+			    const unsigned int newvol,
+			    const u32 event_mask)
+{
+	unsigned int i = oldvol;
+
+	while (i > newvol) {
+		TPACPI_MAY_SEND_KEY(TP_ACPI_HOTKEYSCAN_VOLUMEDOWN);
+		i--;
+	}
+	while (i < newvol) {
+		TPACPI_MAY_SEND_KEY(TP_ACPI_HOTKEYSCAN_VOLUMEUP);
+		i++;
+	}
+}
+
+static void issue_brightnesschange(const unsigned int oldbrt,
+				   const unsigned int newbrt,
+				   const u32 event_mask)
+{
+	unsigned int i = oldbrt;
+
+	while (i > newbrt) {
+		TPACPI_MAY_SEND_KEY(TP_ACPI_HOTKEYSCAN_FNEND);
+		i--;
+	}
+	while (i < newbrt) {
+		TPACPI_MAY_SEND_KEY(TP_ACPI_HOTKEYSCAN_FNHOME);
+		i++;
+	}
+}
+
 static void hotkey_compare_and_issue_event(struct tp_nvram_state *oldn,
 					   struct tp_nvram_state *newn,
 					   const u32 event_mask)
 {
-
-#define TPACPI_COMPARE_KEY(__scancode, __member) \
-	do { \
-		if ((event_mask & (1 << __scancode)) && \
-		    oldn->__member != newn->__member) \
-			tpacpi_hotkey_send_key(__scancode); \
-	} while (0)
-
-#define TPACPI_MAY_SEND_KEY(__scancode) \
-	do { \
-		if (event_mask & (1 << __scancode)) \
-			tpacpi_hotkey_send_key(__scancode); \
-	} while (0)
-
-	void issue_volchange(const unsigned int oldvol,
-			     const unsigned int newvol)
-	{
-		unsigned int i = oldvol;
-
-		while (i > newvol) {
-			TPACPI_MAY_SEND_KEY(TP_ACPI_HOTKEYSCAN_VOLUMEDOWN);
-			i--;
-		}
-		while (i < newvol) {
-			TPACPI_MAY_SEND_KEY(TP_ACPI_HOTKEYSCAN_VOLUMEUP);
-			i++;
-		}
-	}
-
-	void issue_brightnesschange(const unsigned int oldbrt,
-				    const unsigned int newbrt)
-	{
-		unsigned int i = oldbrt;
-
-		while (i > newbrt) {
-			TPACPI_MAY_SEND_KEY(TP_ACPI_HOTKEYSCAN_FNEND);
-			i--;
-		}
-		while (i < newbrt) {
-			TPACPI_MAY_SEND_KEY(TP_ACPI_HOTKEYSCAN_FNHOME);
-			i++;
-		}
-	}
 
 	TPACPI_COMPARE_KEY(TP_ACPI_HOTKEYSCAN_THINKPAD, thinkpad_toggle);
 	TPACPI_COMPARE_KEY(TP_ACPI_HOTKEYSCAN_FNSPACE, zoom_toggle);
@@ -2405,7 +2404,8 @@ static void hotkey_compare_and_issue_event(struct tp_nvram_state *oldn,
 		    oldn->volume_level != newn->volume_level) {
 			/* recently muted, or repeated mute keypress, or
 			 * multiple presses ending in mute */
-			issue_volchange(oldn->volume_level, newn->volume_level);
+			issue_volchange(oldn->volume_level, newn->volume_level,
+				event_mask);
 			TPACPI_MAY_SEND_KEY(TP_ACPI_HOTKEYSCAN_MUTE);
 		}
 	} else {
@@ -2415,7 +2415,8 @@ static void hotkey_compare_and_issue_event(struct tp_nvram_state *oldn,
 			TPACPI_MAY_SEND_KEY(TP_ACPI_HOTKEYSCAN_VOLUMEUP);
 		}
 		if (oldn->volume_level != newn->volume_level) {
-			issue_volchange(oldn->volume_level, newn->volume_level);
+			issue_volchange(oldn->volume_level, newn->volume_level,
+				event_mask);
 		} else if (oldn->volume_toggle != newn->volume_toggle) {
 			/* repeated vol up/down keypress at end of scale ? */
 			if (newn->volume_level == 0)
@@ -2428,7 +2429,7 @@ static void hotkey_compare_and_issue_event(struct tp_nvram_state *oldn,
 	/* handle brightness */
 	if (oldn->brightness_level != newn->brightness_level) {
 		issue_brightnesschange(oldn->brightness_level,
-				       newn->brightness_level);
+				       newn->brightness_level, event_mask);
 	} else if (oldn->brightness_toggle != newn->brightness_toggle) {
 		/* repeated key presses that didn't change state */
 		if (newn->brightness_level == 0)
@@ -2917,81 +2918,6 @@ static void hotkey_wakeup_hotunplug_complete_notify_change(void)
 		     "wakeup_hotunplug_complete");
 }
 
-/* sysfs hotkey_mute_state --------------------------------------------- */
-enum {
-	TPACPI_AML_MUTE_READ_MASK = 0x01,
-	TPACPI_AML_MUTE_ERROR_STATE_MASK = 0x80000000,
-};
-
-static ssize_t hotkey_mute_state_show(struct device *dev,
-			   struct device_attribute *attr,
-			   char *buf)
-{
-	int state;
-
-	if (!acpi_evalf(hkey_handle, &state, "GSMS", "dd"))
-		return -EIO;
-
-	if (state & TPACPI_AML_MUTE_ERROR_STATE_MASK)
-		pr_warn("getting mute state failed.\n");
-
-	state &= TPACPI_AML_MUTE_READ_MASK;
-
-	return snprintf(buf, PAGE_SIZE, "%x\n", state);
-}
-
-static ssize_t hotkey_mute_state_store(struct device *dev,
-			    struct device_attribute *attr,
-			    const char *buf, size_t count)
-{
-	unsigned long state;
-	int output;
-
-	if (parse_strtoul(buf, 25, &state))
-		return -EINVAL;
-
-	if (state != 1 && state != 0)
-		return -EINVAL;
-
-	if (!acpi_evalf(hkey_handle, &output, "SSMS", "dd", state))
-		return -EIO;
-
-	if (output & TPACPI_AML_MUTE_ERROR_STATE_MASK)
-		return -EIO;
-
-	return count;
-}
-
-static struct device_attribute dev_attr_hotkey_mute_state =
-	__ATTR(hotkey_mute_state, S_IWUSR | S_IRUGO,
-	hotkey_mute_state_show, hotkey_mute_state_store);
-
-/* sysfs hotkey_mute_enable -------------------------------------------- */
-static ssize_t hotkey_mute_enable_store(struct device *dev,
-			    struct device_attribute *attr,
-			    const char *buf, size_t count)
-{
-	unsigned long state;
-	int output;
-
-	if (parse_strtoul(buf, 25, &state))
-		return -EINVAL;
-
-	if (state != 1 && state != 0)
-		return -EINVAL;
-
-	if (!acpi_evalf(hkey_handle, &output, "SHDA", "dd", state))
-		return -EIO;
-
-	if (output & TPACPI_AML_MUTE_ERROR_STATE_MASK)
-		return -EIO;
-
-	return count;
-}
-
-static struct device_attribute dev_attr_hotkey_mute_enable =
-	__ATTR(hotkey_mute_enable, S_IWUSR, NULL, hotkey_mute_enable_store);
-
 /* --------------------------------------------------------------------- */
 
 static struct attribute *hotkey_attributes[] __initdata = {
@@ -3007,8 +2933,6 @@ static struct attribute *hotkey_attributes[] __initdata = {
 	&dev_attr_hotkey_source_mask.attr,
 	&dev_attr_hotkey_poll_freq.attr,
 #endif
-	&dev_attr_hotkey_mute_state.attr,
-	&dev_attr_hotkey_mute_enable.attr,
 };
 
 /*
@@ -3517,6 +3441,106 @@ err_exit:
 	return (res < 0)? res : 1;
 }
 
+/* Thinkpad X1 Carbon support 5 modes including Home mode, Web browser
+ * mode, Web conference mode, Function mode and Lay-flat mode.
+ * We support Home mode and Function mode currently.
+ *
+ * Will consider support rest of modes in future.
+ *
+ */
+enum ADAPTIVE_KEY_MODE {
+	HOME_MODE,
+	WEB_BROWSER_MODE,
+	WEB_CONFERENCE_MODE,
+	FUNCTION_MODE,
+	LAYFLAT_MODE
+};
+
+const int adaptive_keyboard_modes[] = {
+	HOME_MODE,
+/*	WEB_BROWSER_MODE = 2,
+	WEB_CONFERENCE_MODE = 3, */
+	FUNCTION_MODE
+};
+
+#define DFR_CHANGE_ROW			0x101
+#define DFR_SHOW_QUICKVIEW_ROW		0x102
+
+/* press Fn key a while second, it will switch to Function Mode. Then
+ * release Fn key, previous mode be restored.
+ */
+static bool adaptive_keyboard_mode_is_saved;
+static int adaptive_keyboard_prev_mode;
+
+static int adaptive_keyboard_get_next_mode(int mode)
+{
+	size_t i;
+	size_t max_mode = ARRAY_SIZE(adaptive_keyboard_modes) - 1;
+
+	for (i = 0; i <= max_mode; i++) {
+		if (adaptive_keyboard_modes[i] == mode)
+			break;
+	}
+
+	if (i >= max_mode)
+		i = 0;
+	else
+		i++;
+
+	return adaptive_keyboard_modes[i];
+}
+
+static bool adaptive_keyboard_hotkey_notify_hotkey(unsigned int scancode)
+{
+	u32 current_mode = 0;
+	int new_mode = 0;
+
+	switch (scancode) {
+	case DFR_CHANGE_ROW:
+		if (adaptive_keyboard_mode_is_saved) {
+			new_mode = adaptive_keyboard_prev_mode;
+			adaptive_keyboard_mode_is_saved = false;
+		} else {
+			if (!acpi_evalf(
+					hkey_handle, &current_mode,
+					"GTRW", "dd", 0)) {
+				pr_err("Cannot read adaptive keyboard mode\n");
+				return false;
+			} else {
+				new_mode = adaptive_keyboard_get_next_mode(
+						current_mode);
+			}
+		}
+
+		if (!acpi_evalf(hkey_handle, NULL, "STRW", "vd", new_mode)) {
+			pr_err("Cannot set adaptive keyboard mode\n");
+			return false;
+		}
+
+		return true;
+
+	case DFR_SHOW_QUICKVIEW_ROW:
+		if (!acpi_evalf(hkey_handle,
+				&adaptive_keyboard_prev_mode,
+				"GTRW", "dd", 0)) {
+			pr_err("Cannot read adaptive keyboard mode\n");
+			return false;
+		} else {
+			adaptive_keyboard_mode_is_saved = true;
+
+			if (!acpi_evalf(hkey_handle,
+					NULL, "STRW", "vd", FUNCTION_MODE)) {
+				pr_err("Cannot set adaptive keyboard mode\n");
+				return false;
+			}
+		}
+		return true;
+
+	default:
+		return false;
+	}
+}
+
 static bool hotkey_notify_hotkey(const u32 hkey,
 				 bool *send_acpi_ev,
 				 bool *ignore_acpi_ev)
@@ -3536,6 +3560,8 @@ static bool hotkey_notify_hotkey(const u32 hkey,
 			*ignore_acpi_ev = true;
 		}
 		return true;
+	} else {
+		return adaptive_keyboard_hotkey_notify_hotkey(scancode);
 	}
 	return false;
 }
@@ -3808,13 +3834,28 @@ static void hotkey_notify(struct ibm_struct *ibm, u32 event)
 
 static void hotkey_suspend(void)
 {
+	int hkeyv;
+
 	/* Do these on suspend, we get the events on early resume! */
 	hotkey_wakeup_reason = TP_ACPI_WAKEUP_NONE;
 	hotkey_autosleep_ack = 0;
+
+	/* save previous mode of adaptive keyboard of X1 Carbon */
+	if (acpi_evalf(hkey_handle, &hkeyv, "MHKV", "qd")) {
+		if ((hkeyv >> 8) == 2) {
+			if (!acpi_evalf(hkey_handle,
+						&adaptive_keyboard_prev_mode,
+						"GTRW", "dd", 0)) {
+				pr_err("Cannot read adaptive keyboard mode.\n");
+			}
+		}
+	}
 }
 
 static void hotkey_resume(void)
 {
+	int hkeyv;
+
 	tpacpi_disable_brightness_delay();
 
 	if (hotkey_status_set(true) < 0 ||
@@ -3827,6 +3868,18 @@ static void hotkey_resume(void)
 	hotkey_wakeup_reason_notify_change();
 	hotkey_wakeup_hotunplug_complete_notify_change();
 	hotkey_poll_setup_safe(false);
+
+	/* restore previous mode of adapive keyboard of X1 Carbon */
+	if (acpi_evalf(hkey_handle, &hkeyv, "MHKV", "qd")) {
+		if ((hkeyv >> 8) == 2) {
+			if (!acpi_evalf(hkey_handle,
+						NULL,
+						"STRW", "vd",
+						adaptive_keyboard_prev_mode)) {
+				pr_err("Cannot set adaptive keyboard mode.\n");
+			}
+		}
+	}
 }
 
 /* procfs -------------------------------------------------------------- */
@@ -5102,10 +5155,8 @@ static const char * const tpacpi_led_names[TPACPI_LED_NUMLEDS] = {
 	"tpacpi::unknown_led2",
 	"tpacpi::unknown_led3",
 	"tpacpi::thinkvantage",
-	"tpacpi::unknown_led4",
-	"tpacpi::micmute",
 };
-#define TPACPI_SAFE_LEDS	0x5081U
+#define TPACPI_SAFE_LEDS	0x1081U
 
 static inline bool tpacpi_is_led_restricted(const unsigned int led)
 {
@@ -5328,7 +5379,7 @@ static const struct tpacpi_quirk led_useful_qtable[] __initconst = {
 	{ /* Lenovo */
 	  .vendor = PCI_VENDOR_ID_LENOVO,
 	  .bios = TPACPI_MATCH_ANY, .ec = TPACPI_MATCH_ANY,
-	  .quirks = 0x5fffU,
+	  .quirks = 0x1fffU,
 	},
 	{ /* IBM ThinkPads with no EC version string */
 	  .vendor = PCI_VENDOR_ID_IBM,
@@ -6175,19 +6226,28 @@ static int __init tpacpi_query_bcl_levels(acpi_handle handle)
 {
 	struct acpi_buffer buffer = { ACPI_ALLOCATE_BUFFER, NULL };
 	union acpi_object *obj;
+	struct acpi_device *device, *child;
 	int rc;
 
-	if (ACPI_SUCCESS(acpi_evaluate_object(handle, "_BCL", NULL, &buffer))) {
+	if (acpi_bus_get_device(handle, &device))
+		return 0;
+
+	rc = 0;
+	list_for_each_entry(child, &device->children, node) {
+		acpi_status status = acpi_evaluate_object(child->handle, "_BCL",
+							  NULL, &buffer);
+		if (ACPI_FAILURE(status))
+			continue;
+
 		obj = (union acpi_object *)buffer.pointer;
 		if (!obj || (obj->type != ACPI_TYPE_PACKAGE)) {
 			pr_err("Unknown _BCL data, please report this to %s\n",
-			       TPACPI_MAIL);
+				TPACPI_MAIL);
 			rc = 0;
 		} else {
 			rc = obj->package.count;
 		}
-	} else {
-		return 0;
+		break;
 	}
 
 	kfree(buffer.pointer);
@@ -6203,7 +6263,7 @@ static unsigned int __init tpacpi_check_std_acpi_brightness_support(void)
 	acpi_handle video_device;
 	int bcl_levels = 0;
 
-	tpacpi_acpi_handle_locate("video", ACPI_VIDEO_HID, &video_device);
+	tpacpi_acpi_handle_locate("video", NULL, &video_device);
 	if (video_device)
 		bcl_levels = tpacpi_query_bcl_levels(video_device);
 
@@ -6849,8 +6909,9 @@ static int __init volume_create_alsa_mixer(void)
 	struct snd_kcontrol *ctl_mute;
 	int rc;
 
-	rc = snd_card_create(alsa_index, alsa_id, THIS_MODULE,
-			    sizeof(struct tpacpi_alsa_data), &card);
+	rc = snd_card_new(&tpacpi_pdev->dev,
+			  alsa_index, alsa_id, THIS_MODULE,
+			  sizeof(struct tpacpi_alsa_data), &card);
 	if (rc < 0 || !card) {
 		pr_err("Failed to create ALSA card structures: %d\n", rc);
 		return 1;
@@ -6901,7 +6962,6 @@ static int __init volume_create_alsa_mixer(void)
 	}
 	data->ctl_mute_id = &ctl_mute->id;
 
-	snd_card_set_dev(card, &tpacpi_pdev->dev);
 	rc = snd_card_register(card);
 	if (rc < 0) {
 		pr_err("Failed to register ALSA card: %d\n", rc);
@@ -8440,152 +8500,101 @@ static struct ibm_struct fan_driver_data = {
 	.resume = fan_resume,
 };
 
-
 /*************************************************************************
- * Battery subdriver
+ * Mute LED subdriver
  */
 
-/* Define a new battery, _BAT is a number >= 0 */
-#define DEFINE_BATTERY(_BAT) \
-static struct dev_ext_attribute bat##_BAT##_attribute_start_charge_thresh = { \
-	.attr = __ATTR(start_charge_tresh, (S_IWUSR | S_IRUGO), \
-		       battery_start_charge_thresh_show, \
-		       battery_start_charge_thresh_store), \
-	.var = (void *) (_BAT + 1) \
-}; \
-static struct dev_ext_attribute bat##_BAT##_attribute_stop_charge_thresh = { \
-	.attr = __ATTR(stop_charge_tresh, (S_IWUSR | S_IRUGO), \
-		       battery_stop_charge_thresh_show, \
-		       battery_stop_charge_thresh_store), \
-	.var = (void *) (_BAT + 1) \
-}; \
-static struct attribute *bat##_BAT##_attributes[] = { \
-	&bat##_BAT##_attribute_start_charge_thresh.attr.attr, \
-	&bat##_BAT##_attribute_stop_charge_thresh.attr.attr, \
-	NULL \
-}; \
-\
-static struct attribute_group bat##_BAT##_attribute_group = { \
-	.name  = "BAT" #_BAT, \
-	.attrs = bat##_BAT##_attributes \
+
+struct tp_led_table {
+	acpi_string name;
+	int on_value;
+	int off_value;
+	int state;
 };
 
-static int battery_attribute_get_battery(struct device_attribute *attr)
-{
-	return (int) (unsigned long) container_of(attr,
-						  struct dev_ext_attribute,
-						  attr)->var;
-}
-
-static ssize_t battery_start_charge_thresh_store(struct device *dev,
-						 struct device_attribute *attr,
-						 const char *buf, size_t count)
-{
-	int bat = battery_attribute_get_battery(attr);
-	int res = -EINVAL;
-	unsigned long value;
-
-	res = kstrtoul(buf, 0, &value);
-	if (res || value > 99)
-		return res ? res : -EINVAL;
-
-	if (!battery_handle || !acpi_evalf(battery_handle, &res, "BCCS",
-					   "dd", (int) value | (bat << 8)))
-		return -EIO;
-
-	return count;
-}
-
-static ssize_t battery_stop_charge_thresh_store(struct device *dev,
-						struct device_attribute *attr,
-						const char *buf, size_t count)
-{
-	int bat = battery_attribute_get_battery(attr);
-	int res = -EINVAL;
-	unsigned long value;
-
-	res = kstrtoul(buf, 0, &value);
-	if (res || value > 99)
-		return res ? res : -EINVAL;
-
-	if (!battery_handle || !acpi_evalf(battery_handle, &res, "BCSS",
-					   "dd", (int) value | (bat << 8)))
-		return -EIO;
-
-	return count;
-}
-
-static ssize_t battery_start_charge_thresh_show(struct device *dev,
-						struct device_attribute *attr,
-						char *buf)
-{
-	int bat = battery_attribute_get_battery(attr);
-	int value;
-
-	if (!battery_handle || !acpi_evalf(battery_handle, &value, "BCTG",
-					   "dd", bat))
-		return -EIO;
-
-	return snprintf(buf, PAGE_SIZE, "%d\n", value & 0xFF);
-}
-
-static ssize_t battery_stop_charge_thresh_show(struct device *dev,
-					       struct device_attribute *attr,
-					       char *buf)
-{
-	int bat = battery_attribute_get_battery(attr);
-	int value;
-
-	if (!battery_handle || !acpi_evalf(battery_handle, &value, "BCSG",
-					   "dd", bat))
-		return -EIO;
-
-	return snprintf(buf, PAGE_SIZE, "%d\n", value & 0xFF);
-}
-
-DEFINE_BATTERY(0);
-DEFINE_BATTERY(1);
-
-static struct attribute_group *bat_attribute_groups[] = {
-	&bat0_attribute_group,
-	&bat1_attribute_group,
+static struct tp_led_table led_tables[] = {
+	[TPACPI_LED_MUTE] = {
+		.name = "SSMS",
+		.on_value = 1,
+		.off_value = 0,
+	},
+	[TPACPI_LED_MICMUTE] = {
+		.name = "MMTS",
+		.on_value = 2,
+		.off_value = 0,
+	},
 };
 
-static int __init battery_init(struct ibm_init_struct *iibm)
+static int mute_led_on_off(struct tp_led_table *t, bool state)
 {
-	int res;
-	int i;
+	acpi_handle temp;
+	int output;
 
-	vdbg_printk(TPACPI_DBG_INIT,
-		"initializing battery commands subdriver\n");
-
-	TPACPI_ACPIHANDLE_INIT(battery);
-
-	vdbg_printk(TPACPI_DBG_INIT, "battery commands are %s\n",
-		str_supported(battery_handle != NULL));
-
-	for (i = 0; i < ARRAY_SIZE(bat_attribute_groups); i++) {
-		res = sysfs_create_group(&tpacpi_pdev->dev.kobj,
-					 bat_attribute_groups[i]);
-		if (res)
-			return res;
+	if (!ACPI_SUCCESS(acpi_get_handle(hkey_handle, t->name, &temp))) {
+		pr_warn("Thinkpad ACPI has no %s interface.\n", t->name);
+		return -EIO;
 	}
 
-	return (battery_handle) ? 0 : 1;
+	if (!acpi_evalf(hkey_handle, &output, t->name, "dd",
+			state ? t->on_value : t->off_value))
+		return -EIO;
+
+	t->state = state;
+	return state;
 }
 
-static void battery_exit(void)
+int tpacpi_led_set(int whichled, bool on)
+{
+	struct tp_led_table *t;
+
+	if (whichled < 0 || whichled >= TPACPI_LED_MAX)
+		return -EINVAL;
+
+	t = &led_tables[whichled];
+	if (t->state < 0 || t->state == on)
+		return t->state;
+	return mute_led_on_off(t, on);
+}
+EXPORT_SYMBOL_GPL(tpacpi_led_set);
+
+static int mute_led_init(struct ibm_init_struct *iibm)
+{
+	acpi_handle temp;
+	int i;
+
+	for (i = 0; i < TPACPI_LED_MAX; i++) {
+		struct tp_led_table *t = &led_tables[i];
+		if (ACPI_SUCCESS(acpi_get_handle(hkey_handle, t->name, &temp)))
+			mute_led_on_off(t, false);
+		else
+			t->state = -ENODEV;
+	}
+	return 0;
+}
+
+static void mute_led_exit(void)
 {
 	int i;
 
-	for (i = 0; i < ARRAY_SIZE(bat_attribute_groups); i++)
-		sysfs_remove_group(&tpacpi_pdev->dev.kobj,
-				   bat_attribute_groups[i]);
+	for (i = 0; i < TPACPI_LED_MAX; i++)
+		tpacpi_led_set(i, false);
 }
 
-static struct ibm_struct battery_driver_data = {
-	.name = "battery",
-	.exit = battery_exit,
+static void mute_led_resume(void)
+{
+	int i;
+
+	for (i = 0; i < TPACPI_LED_MAX; i++) {
+		struct tp_led_table *t = &led_tables[i];
+		if (t->state >= 0)
+			mute_led_on_off(t, t->state);
+	}
+}
+
+static struct ibm_struct mute_led_driver_data = {
+	.name = "mute_led",
+	.exit = mute_led_exit,
+	.resume = mute_led_resume,
 };
 
 /****************************************************************************
@@ -8979,10 +8988,6 @@ static struct ibm_init_struct ibms_init[] __initdata = {
 		.data = &light_driver_data,
 	},
 	{
-		.init = battery_init,
-		.data = &battery_driver_data,
-	},
-	{
 		.init = cmos_init,
 		.data = &cmos_driver_data,
 	},
@@ -9009,6 +9014,10 @@ static struct ibm_init_struct ibms_init[] __initdata = {
 	{
 		.init = fan_init,
 		.data = &fan_driver_data,
+	},
+	{
+		.init = mute_led_init,
+		.data = &mute_led_driver_data,
 	},
 };
 
@@ -9298,7 +9307,6 @@ static int __init thinkpad_acpi_module_init(void)
 	mutex_init(&tpacpi_inputdev_send_mutex);
 	tpacpi_inputdev = input_allocate_device();
 	if (!tpacpi_inputdev) {
-		pr_err("unable to allocate input device\n");
 		thinkpad_acpi_module_exit();
 		return -ENOMEM;
 	} else {

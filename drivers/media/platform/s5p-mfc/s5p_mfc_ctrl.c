@@ -44,8 +44,6 @@ int s5p_mfc_alloc_firmware(struct s5p_mfc_dev *dev)
 		return -ENOMEM;
 	}
 
-	dev->bank1 = dev->bank1;
-
 	if (HAS_PORTNUM(dev) && IS_TWOPORT(dev)) {
 		bank2_virt = dma_alloc_coherent(dev->mem_dev_r, 1 << MFC_BASE_ALIGN_ORDER,
 					&bank2_dma_addr, GFP_KERNEL);
@@ -69,7 +67,7 @@ int s5p_mfc_alloc_firmware(struct s5p_mfc_dev *dev)
 
 	} else {
 		/* In this case bank2 can point to the same address as bank1.
-		 * Firmware will always occupy the beggining of this area so it is
+		 * Firmware will always occupy the beginning of this area so it is
 		 * impossible having a video frame buffer with zero address. */
 		dev->bank2 = dev->bank1;
 	}

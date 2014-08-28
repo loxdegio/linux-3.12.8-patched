@@ -84,6 +84,7 @@ mwifiex_sdio_probe(struct sdio_func *func, const struct sdio_device_id *id)
 		card->mp_agg_pkt_limit = data->mp_agg_pkt_limit;
 		card->supports_sdio_new_mode = data->supports_sdio_new_mode;
 		card->has_control_mask = data->has_control_mask;
+		card->tx_buf_size = data->tx_buf_size;
 	}
 
 	sdio_claim_host(func);
@@ -165,7 +166,6 @@ mwifiex_sdio_remove(struct sdio_func *func)
 	struct sdio_mmc_card *card;
 	struct mwifiex_adapter *adapter;
 	struct mwifiex_private *priv;
-	int i;
 
 	pr_debug("info: SDIO func num=%d\n", func->num);
 
@@ -184,11 +184,7 @@ mwifiex_sdio_remove(struct sdio_func *func)
 		if (adapter->is_suspended)
 			mwifiex_sdio_resume(adapter->dev);
 
-		for (i = 0; i < adapter->priv_num; i++)
-			if ((GET_BSS_ROLE(adapter->priv[i]) ==
-						MWIFIEX_BSS_ROLE_STA) &&
-			    adapter->priv[i]->media_connected)
-				mwifiex_deauthenticate(adapter->priv[i], NULL);
+		mwifiex_deauthenticate_all(adapter);
 
 		priv = mwifiex_get_priv(adapter, MWIFIEX_BSS_ROLE_ANY);
 		mwifiex_disable_auto_ds(priv);
@@ -196,7 +192,6 @@ mwifiex_sdio_remove(struct sdio_func *func)
 	}
 
 	mwifiex_remove_card(card->adapter, &add_remove_card_sem);
-	kfree(card);
 }
 
 /*
@@ -242,6 +237,7 @@ static int mwifiex_sdio_suspend(struct device *dev)
 	/* Enable the Host Sleep */
 	if (!mwifiex_enable_hs(adapter)) {
 		dev_err(adapter->dev, "cmd: failed to suspend\n");
+		adapter->hs_enabling = false;
 		return -EFAULT;
 	}
 
@@ -250,6 +246,7 @@ static int mwifiex_sdio_suspend(struct device *dev)
 
 	/* Indicate device suspended */
 	adapter->is_suspended = true;
+	adapter->hs_enabling = false;
 
 	return ret;
 }
@@ -1745,7 +1742,6 @@ mwifiex_unregister_dev(struct mwifiex_adapter *adapter)
 		sdio_claim_host(card->func);
 		sdio_disable_func(card->func);
 		sdio_release_host(card->func);
-		sdio_set_drvdata(card->func, NULL);
 	}
 }
 
@@ -1762,6 +1758,7 @@ static int mwifiex_register_dev(struct mwifiex_adapter *adapter)
 
 	/* save adapter pointer in card */
 	card->adapter = adapter;
+	adapter->tx_buf_size = card->tx_buf_size;
 
 	sdio_claim_host(func);
 
@@ -1773,7 +1770,6 @@ static int mwifiex_register_dev(struct mwifiex_adapter *adapter)
 		return ret;
 	}
 
-	sdio_set_drvdata(func, card);
 
 	adapter->dev = &func->dev;
 
@@ -1800,6 +1796,8 @@ static int mwifiex_init_sdio(struct mwifiex_adapter *adapter)
 	const struct mwifiex_sdio_card_reg *reg = card->reg;
 	int ret;
 	u8 sdio_ireg;
+
+	sdio_set_drvdata(card->func, card);
 
 	/*
 	 * Read the HOST_INT_STATUS_REG for ACK the first interrupt got
@@ -1883,6 +1881,8 @@ static void mwifiex_cleanup_sdio(struct mwifiex_adapter *adapter)
 	kfree(card->mpa_rx.len_arr);
 	kfree(card->mpa_tx.buf);
 	kfree(card->mpa_rx.buf);
+	sdio_set_drvdata(card->func, NULL);
+	kfree(card);
 }
 
 /*

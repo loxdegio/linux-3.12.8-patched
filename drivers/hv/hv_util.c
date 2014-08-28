@@ -28,6 +28,7 @@
 #include <linux/reboot.h>
 #include <linux/hyperv.h>
 
+#include "hyperv_vmbus.h"
 
 #define SD_MAJOR	3
 #define SD_MINOR	0
@@ -82,6 +83,12 @@ static struct hv_util_service util_vss = {
 	.util_deinit = hv_vss_deinit,
 };
 
+static struct hv_util_service util_fcopy = {
+	.util_cb = hv_fcopy_onchannelcallback,
+	.util_init = hv_fcopy_init,
+	.util_deinit = hv_fcopy_deinit,
+};
+
 static void perform_shutdown(struct work_struct *dummy)
 {
 	orderly_poweroff(true);
@@ -97,7 +104,7 @@ static void shutdown_onchannelcallback(void *context)
 	struct vmbus_channel *channel = context;
 	u32 recvlen;
 	u64 requestid;
-	u8  execute_shutdown = false;
+	bool execute_shutdown = false;
 	u8  *shut_txf_buf = util_shutdown.recv_buffer;
 
 	struct shutdown_msg_data *shutdown_msg;
@@ -312,7 +319,7 @@ static int util_probe(struct hv_device *dev,
 		(struct hv_util_service *)dev_id->driver_data;
 	int ret;
 
-	srv->recv_buffer = kmalloc(PAGE_SIZE * 2, GFP_KERNEL);
+	srv->recv_buffer = kmalloc(PAGE_SIZE * 4, GFP_KERNEL);
 	if (!srv->recv_buffer)
 		return -ENOMEM;
 	if (srv->util_init) {
@@ -400,6 +407,10 @@ static const struct hv_vmbus_device_id id_table[] = {
 	/* VSS GUID */
 	{ HV_VSS_GUID,
 	  .driver_data = (unsigned long)&util_vss
+	},
+	/* File copy GUID */
+	{ HV_FCOPY_GUID,
+	  .driver_data = (unsigned long)&util_fcopy
 	},
 	{ },
 };

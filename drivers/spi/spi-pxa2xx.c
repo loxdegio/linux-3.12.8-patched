@@ -362,8 +362,7 @@ static void giveback(struct driver_data *drv_data)
 	drv_data->cur_msg = NULL;
 	drv_data->cur_transfer = NULL;
 
-	last_transfer = list_entry(msg->transfers.prev,
-					struct spi_transfer,
+	last_transfer = list_last_entry(&msg->transfers, struct spi_transfer,
 					transfer_list);
 
 	/* Delay if requested before any change in chip select */
@@ -573,8 +572,8 @@ static irqreturn_t ssp_int(int irq, void *dev_id)
 			write_SSTO(0, reg);
 		write_SSSR_CS(drv_data, drv_data->clear_sr);
 
-		dev_err(&drv_data->pdev->dev, "bad message state "
-			"in interrupt handler\n");
+		dev_err(&drv_data->pdev->dev,
+			"bad message state in interrupt handler\n");
 
 		/* Never fail */
 		return IRQ_HANDLED;
@@ -651,8 +650,8 @@ static void pump_transfers(unsigned long data)
 		if (message->is_dma_mapped
 				|| transfer->rx_dma || transfer->tx_dma) {
 			dev_err(&drv_data->pdev->dev,
-				"pump_transfers: mapped transfer length "
-				"of %u is greater than %d\n",
+				"pump_transfers: mapped transfer length of "
+				"%u is greater than %d\n",
 				transfer->len, MAX_DMA_LEN);
 			message->status = -EINVAL;
 			giveback(drv_data);
@@ -660,11 +659,10 @@ static void pump_transfers(unsigned long data)
 		}
 
 		/* warn ... we force this to PIO mode */
-		if (printk_ratelimit())
-			dev_warn(&message->spi->dev, "pump_transfers: "
-				"DMA disabled for transfer length %ld "
-				"greater than %d\n",
-				(long)drv_data->len, MAX_DMA_LEN);
+		dev_warn_ratelimited(&message->spi->dev,
+				     "pump_transfers: DMA disabled for transfer length %ld "
+				     "greater than %d\n",
+				     (long)drv_data->len, MAX_DMA_LEN);
 	}
 
 	/* Setup the transfer state based on the type of transfer */
@@ -726,11 +724,8 @@ static void pump_transfers(unsigned long data)
 							message->spi,
 							bits, &dma_burst,
 							&dma_thresh))
-				if (printk_ratelimit())
-					dev_warn(&message->spi->dev,
-						"pump_transfers: "
-						"DMA burst size reduced to "
-						"match bits_per_word\n");
+				dev_warn_ratelimited(&message->spi->dev,
+						     "pump_transfers: DMA burst size reduced to match bits_per_word\n");
 		}
 
 		cr0 = clk_div
@@ -854,8 +849,8 @@ static int setup_cs(struct spi_device *spi, struct chip_data *chip,
 	if (gpio_is_valid(chip_info->gpio_cs)) {
 		err = gpio_request(chip_info->gpio_cs, "SPI_CS");
 		if (err) {
-			dev_err(&spi->dev, "failed to request chip select "
-					"GPIO%d\n", chip_info->gpio_cs);
+			dev_err(&spi->dev, "failed to request chip select GPIO%d\n",
+				chip_info->gpio_cs);
 			return err;
 		}
 
@@ -899,8 +894,8 @@ static int setup(struct spi_device *spi)
 
 		if (drv_data->ssp_type == CE4100_SSP) {
 			if (spi->chip_select > 4) {
-				dev_err(&spi->dev, "failed setup: "
-				"cs number must not be > 4.\n");
+				dev_err(&spi->dev,
+					"failed setup: cs number must not be > 4.\n");
 				kfree(chip);
 				return -EINVAL;
 			}
@@ -956,8 +951,8 @@ static int setup(struct spi_device *spi)
 						spi->bits_per_word,
 						&chip->dma_burst_size,
 						&chip->dma_threshold)) {
-			dev_warn(&spi->dev, "in setup: DMA burst size reduced "
-					"to match bits_per_word\n");
+			dev_warn(&spi->dev,
+				 "in setup: DMA burst size reduced to match bits_per_word\n");
 		}
 	}
 
@@ -1070,6 +1065,8 @@ pxa2xx_spi_acpi_get_pdata(struct platform_device *pdev)
 
 	pdata->num_chipselect = 1;
 	pdata->enable_dma = true;
+	pdata->tx_chan_id = -1;
+	pdata->rx_chan_id = -1;
 
 	return pdata;
 }
@@ -1207,7 +1204,7 @@ static int pxa2xx_spi_probe(struct platform_device *pdev)
 
 	/* Register with the SPI framework */
 	platform_set_drvdata(pdev, drv_data);
-	status = spi_register_master(master);
+	status = devm_spi_register_master(&pdev->dev, master);
 	if (status != 0) {
 		dev_err(&pdev->dev, "problem registering spi master\n");
 		goto out_error_clock_enabled;
@@ -1259,9 +1256,6 @@ static int pxa2xx_spi_remove(struct platform_device *pdev)
 	/* Release SSP */
 	pxa_ssp_free(ssp);
 
-	/* Disconnect from the SPI framework */
-	spi_unregister_master(drv_data->master);
-
 	return 0;
 }
 
@@ -1273,7 +1267,7 @@ static void pxa2xx_spi_shutdown(struct platform_device *pdev)
 		dev_err(&pdev->dev, "shutdown failed with %d\n", status);
 }
 
-#ifdef CONFIG_PM
+#ifdef CONFIG_PM_SLEEP
 static int pxa2xx_spi_suspend(struct device *dev)
 {
 	struct driver_data *drv_data = dev_get_drvdata(dev);
@@ -1299,6 +1293,9 @@ static int pxa2xx_spi_resume(struct device *dev)
 
 	/* Enable the SSP clock */
 	clk_prepare_enable(ssp->clk);
+
+	/* Restore LPSS private register bits */
+	lpss_ssp_setup(drv_data);
 
 	/* Start the queue running */
 	status = spi_master_resume(drv_data->master);

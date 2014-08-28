@@ -17,20 +17,20 @@
  */
 #include "xfs.h"
 #include "xfs_fs.h"
+#include "xfs_shared.h"
 #include "xfs_format.h"
-#include "xfs_log.h"
-#include "xfs_trans.h"
+#include "xfs_log_format.h"
+#include "xfs_trans_resv.h"
 #include "xfs_sb.h"
 #include "xfs_ag.h"
 #include "xfs_mount.h"
-#include "xfs_bmap_btree.h"
-#include "xfs_ialloc_btree.h"
-#include "xfs_dinode.h"
 #include "xfs_inode.h"
 #include "xfs_error.h"
 #include "xfs_cksum.h"
 #include "xfs_icache.h"
+#include "xfs_trans.h"
 #include "xfs_ialloc.h"
+#include "xfs_dinode.h"
 
 /*
  * Check that none of the inode's in the buffer have a next
@@ -102,8 +102,7 @@ xfs_inode_buf_verify(
 			}
 
 			xfs_buf_ioerror(bp, EFSCORRUPTED);
-			XFS_CORRUPTION_ERROR(__func__, XFS_ERRLEVEL_HIGH,
-					     mp, dip);
+			xfs_verifier_error(bp);
 #ifdef DEBUG
 			xfs_alert(mp,
 				"bad inode magic/vsn daddr %lld #%d (magic=%x)",
@@ -306,7 +305,7 @@ xfs_dinode_verify(
 	if (!xfs_sb_version_hascrc(&mp->m_sb))
 		return false;
 	if (!xfs_verify_cksum((char *)dip, mp->m_sb.sb_inodesize,
-			      offsetof(struct xfs_dinode, di_crc)))
+			      XFS_DINODE_CRC_OFF))
 		return false;
 	if (be64_to_cpu(dip->di_ino) != ip->i_ino)
 		return false;
@@ -327,7 +326,7 @@ xfs_dinode_calc_crc(
 
 	ASSERT(xfs_sb_version_hascrc(&mp->m_sb));
 	crc = xfs_start_cksum((char *)dip, mp->m_sb.sb_inodesize,
-			      offsetof(struct xfs_dinode, di_crc));
+			      XFS_DINODE_CRC_OFF);
 	dip->di_crc = xfs_end_cksum(crc);
 }
 

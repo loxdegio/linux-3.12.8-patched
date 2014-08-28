@@ -77,11 +77,6 @@ static int ngene_command_i2c_write(struct ngene *dev, u8 adr,
 {
 	struct ngene_command com;
 
-#if 0
-	/* Probing by writing 0 bytes does not work */
-	if (!outlen)
-		outlen++;
-#endif
 
 	com.cmd.hdr.Opcode = CMD_I2C_WRITE;
 	com.cmd.hdr.Length = outlen + 1;
@@ -153,39 +148,6 @@ done:
 	return num;
 }
 
-#if 0
-static int ngene_i2c_algo_control(struct i2c_adapter *adap,
-				  unsigned int cmd, unsigned long arg)
-{
-	struct ngene_channel *chan =
-		(struct ngene_channel *)i2c_get_adapdata(adap);
-
-	switch (cmd) {
-	case IOCTL_MIC_TUN_RDY:
-		chan->tun_rdy = 1;
-		if (chan->dec_rdy == 1)
-			chan->tun_dec_rdy = 1;
-		break;
-
-	case IOCTL_MIC_DEC_RDY:
-		chan->dec_rdy = 1;
-		if (chan->tun_rdy == 1)
-			chan->tun_dec_rdy = 1;
-		break;
-
-	case IOCTL_MIC_TUN_DETECT:
-		{
-			int *palorbtsc = (int *)arg;
-			*palorbtsc = chan->dev->card_info->ntsc;
-			break;
-		}
-
-	default:
-		break;
-	}
-	return 0;
-}
-#endif
 
 static u32 ngene_i2c_functionality(struct i2c_adapter *adap)
 {
@@ -212,78 +174,3 @@ int ngene_i2c_init(struct ngene *dev, int dev_nr)
 	return i2c_add_adapter(adap);
 }
 
-#if 0
-int i2c_write(struct i2c_adapter *adapter, u8 adr, u8 data)
-{
-	u8 m[1] = {data};
-	struct i2c_msg msg = {.addr = adr, .flags = 0, .buf = m, .len = 1};
-
-	if (i2c_transfer(adapter, &msg, 1) != 1) {
-		printk(KERN_ERR DEVICE_NAME
-		       ": Failed to write to I2C adr %02x!\n", adr);
-		return -1;
-	}
-	return 0;
-}
-
-static int i2c_write_register(struct i2c_adapter *adapter,
-			      u8 adr, u8 reg, u8 data)
-{
-	u8 m[2] = {reg, data};
-	struct i2c_msg msg = {.addr = adr, .flags = 0, .buf = m, .len = 2};
-
-	if (i2c_transfer(adapter, &msg, 1) != 1) {
-		printk(KERN_ERR DEVICE_NAME
-		       ": Failed to write to I2C register %02x@%02x!\n",
-		       reg, adr);
-		return -1;
-	}
-	return 0;
-}
-
-static int i2c_write_read(struct i2c_adapter *adapter,
-			  u8 adr, u8 *w, u8 wlen, u8 *r, u8 rlen)
-{
-	struct i2c_msg msgs[2] = {{.addr = adr, .flags = 0,
-				   .buf = w, .len = wlen},
-				  {.addr = adr, .flags = I2C_M_RD,
-				   .buf = r, .len = rlen} };
-
-	if (i2c_transfer(adapter, msgs, 2) != 2) {
-		printk(KERN_ERR DEVICE_NAME ": error in i2c_write_read\n");
-		return -1;
-	}
-	return 0;
-}
-
-static int test_dec_i2c(struct i2c_adapter *adapter, int reg)
-{
-	u8 data[256] = { reg, 0x00, 0x93, 0x78, 0x43, 0x45 };
-	u8 data2[256];
-	int i;
-
-	memset(data2, 0, 256);
-	i2c_write_read(adapter, 0x66, data, 2, data2, 4);
-	for (i = 0; i < 4; i++)
-		printk(KERN_DEBUG "%02x ", data2[i]);
-	printk(KERN_DEBUG "\n");
-
-	return 0;
-}
-
-static int i2c_write_msp_register(struct i2c_adapter *adapter,
-				  u8 adr, u8 reg, u16 data)
-{
-	u8 m[3] = {reg, (data >> 8) & 0xff, data & 0xff};
-	struct i2c_msg msg = {.addr = adr, .flags = 0, .buf = m, .len = 3 };
-
-	if (i2c_transfer(adapter, &msg, 1) != 1) {
-		printk(KERN_ERR DEVICE_NAME
-		       ": Failed to write to I2C register %02x@%02x!\n",
-		       reg, adr);
-		return -1;
-	}
-	return 0;
-}
-
-#endif

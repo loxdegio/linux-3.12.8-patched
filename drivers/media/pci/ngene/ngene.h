@@ -653,11 +653,6 @@ struct ngene_channel {
 	struct dmx_frontend   mem_frontend;
 	int                   users;
 	struct video_device  *v4l_dev;
-#if 0
-	struct dvb_device    *command_dev;
-	struct dvb_device    *audio_dev;
-	struct dvb_device    *video_dev;
-#endif
 	struct dvb_device    *ci_dev;
 	struct tasklet_struct demux_tasklet;
 
@@ -696,9 +691,6 @@ struct ngene_channel {
 	struct mychip        *mychip;
 	struct snd_card      *soundcard;
 	u8                   *evenbuffer;
-#if 0
-	u8                   *soundbuffer;
-#endif
 	u8                    dma_on;
 	int                   soundstreamon;
 	int                   audiomute;
@@ -857,10 +849,6 @@ struct ngene_info {
 	u8    lnb[4];
 	int   i2c_access;
 	u8    ntsc;
-#if 0
-	u8    exp;
-	u8    exp_init;
-#endif
 	u8    tsf[4];
 	u8    i2s[4];
 
@@ -897,25 +885,6 @@ struct ngene_buffer {
 };
 #endif
 
-#if 0
-int ngene_command_stream_control(struct ngene *dev,
-				 u8 stream, u8 control, u8 mode, u8 flags);
-int ngene_command_nop(struct ngene *dev);
-int ngene_command_i2c_read(struct ngene *dev, u8 adr,
-			   u8 *out, u8 outlen, u8 *in, u8 inlen, int flag);
-int ngene_command_i2c_write(struct ngene *dev, u8 adr, u8 *out, u8 outlen);
-int ngene_command_imem_read(struct ngene *dev, u8 adr, u8 *data, int type);
-int ngene_command_imem_write(struct ngene *dev, u8 adr, u8 data, int type);
-int ngene_stream_control(struct ngene *dev, u8 stream, u8 control, u8 mode,
-			 u16 lines, u16 bpl, u16 vblines, u16 vbibpl);
-
-int ngene_v4l2_init(struct ngene_channel *chan);
-void ngene_v4l2_remove(struct ngene_channel *chan);
-int ngene_snd_exit(struct ngene_channel *chan);
-int ngene_snd_init(struct ngene_channel *chan);
-
-struct i2c_client *avf4910a_attach(struct i2c_adapter *adap, int addr);
-#endif
 
 /* Provided by ngene-core.c */
 int ngene_probe(struct pci_dev *pci_dev, const struct pci_device_id *id);
@@ -944,15 +913,6 @@ int my_dvb_dmxdev_ts_card_init(struct dmxdev *dmxdev,
 			       struct dmx_frontend *hw_frontend,
 			       struct dmx_frontend *mem_frontend,
 			       struct dvb_adapter *dvb_adapter);
-
-/* Provided by ngene-eeprom.c */
-#if 0
-int i2c_copy_eeprom(struct i2c_adapter *adapter, u8 adr, u8 adr2);
-int i2c_dump_eeprom(struct i2c_adapter *adapter, u8 adr);
-int i2c_check_eeprom(struct i2c_adapter *adapter);
-int eeprom_write_ushort(struct i2c_adapter *adapter, u16 tag, u16 data);
-int eeprom_read_ushort(struct i2c_adapter *adapter, u16 tag, u16 *data);
-#endif
 
 #endif
 

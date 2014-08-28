@@ -39,6 +39,7 @@
 #define RC6_STARTBIT_MASK	0x08	/* for the header bits */
 #define RC6_6A_MCE_TOGGLE_MASK	0x8000	/* for the body bits */
 #define RC6_6A_LCC_MASK		0xffff0000 /* RC6-6A-32 long customer code mask */
+#define RC6_6A_MCE_CC		0x800f0000 /* MCE customer code */
 #ifndef CHAR_BIT
 #define CHAR_BIT 8	/* Normally in <limits.h> */
 #endif
@@ -88,9 +89,9 @@ static int ir_rc6_decode(struct rc_dev *dev, struct ir_raw_event ev)
 	u32 scancode;
 	u8 toggle;
 
-	if (!(dev->enabled_protocols &
-	      (RC_BIT_RC6_0 | RC_BIT_RC6_6A_20 | RC_BIT_RC6_6A_24 |
-	       RC_BIT_RC6_6A_32 | RC_BIT_RC6_MCE)))
+	if (!rc_protocols_enabled(dev, RC_BIT_RC6_0 | RC_BIT_RC6_6A_20 |
+				  RC_BIT_RC6_6A_24 | RC_BIT_RC6_6A_32 |
+				  RC_BIT_RC6_MCE))
 		return 0;
 
 	if (!is_timing_event(ev)) {
@@ -243,8 +244,9 @@ again:
 			}
 
 			scancode = data->body;
-			if (data->count == RC6_6A_32_NBITS) {
-				/* MCE compatible RC */
+			if (data->count == RC6_6A_32_NBITS &&
+					(scancode & RC6_6A_LCC_MASK) == RC6_6A_MCE_CC) {
+				/* MCE RC */
 				toggle = (scancode & RC6_6A_MCE_TOGGLE_MASK) ? 1 : 0;
 				scancode &= ~RC6_6A_MCE_TOGGLE_MASK;
 			} else {

@@ -32,6 +32,7 @@
 #include <asm/div64.h>
 
 #include "dvb_frontend.h"
+#include "tda18271c2dd.h"
 
 /* Max transfer size done by I2C transfer functions */
 #define MAX_XFER_SIZE  64

@@ -20,7 +20,7 @@
 #ifndef __ASM_KVM_BOOK3S_64_H__
 #define __ASM_KVM_BOOK3S_64_H__
 
-#ifdef CONFIG_KVM_BOOK3S_PR
+#ifdef CONFIG_KVM_BOOK3S_PR_POSSIBLE
 static inline struct kvmppc_book3s_shadow_vcpu *svcpu_get(struct kvm_vcpu *vcpu)
 {
 	preempt_disable();
@@ -35,7 +35,7 @@ static inline void svcpu_put(struct kvmppc_book3s_shadow_vcpu *svcpu)
 
 #define SPAPR_TCE_SHIFT		12
 
-#ifdef CONFIG_KVM_BOOK3S_64_HV
+#ifdef CONFIG_KVM_BOOK3S_HV_POSSIBLE
 #define KVM_DEFAULT_HPT_ORDER	24	/* 16MB HPT by default */
 extern unsigned long kvm_rma_pages;
 #endif
@@ -278,7 +278,7 @@ static inline int is_vrma_hpte(unsigned long hpte_v)
 		(HPTE_V_1TB_SEG | (VRMA_VSID << (40 - 16)));
 }
 
-#ifdef CONFIG_KVM_BOOK3S_64_HV
+#ifdef CONFIG_KVM_BOOK3S_HV_POSSIBLE
 /*
  * Note modification of an HPTE; set the HPTE modified bit
  * if anyone is interested.
@@ -289,6 +289,18 @@ static inline void note_hpte_modification(struct kvm *kvm,
 	if (atomic_read(&kvm->arch.hpte_mod_interest))
 		rev->guest_rpte |= HPTE_GR_MODIFIED;
 }
-#endif /* CONFIG_KVM_BOOK3S_64_HV */
+
+/*
+ * Like kvm_memslots(), but for use in real mode when we can't do
+ * any RCU stuff (since the secondary threads are offline from the
+ * kernel's point of view), and we can't print anything.
+ * Thus we use rcu_dereference_raw() rather than rcu_dereference_check().
+ */
+static inline struct kvm_memslots *kvm_memslots_raw(struct kvm *kvm)
+{
+	return rcu_dereference_raw_notrace(kvm->memslots);
+}
+
+#endif /* CONFIG_KVM_BOOK3S_HV_POSSIBLE */
 
 #endif /* __ASM_KVM_BOOK3S_64_H__ */

@@ -89,6 +89,8 @@ typedef struct xfs_agf {
 	/* structure must be padded to 64 bit alignment */
 } xfs_agf_t;
 
+#define XFS_AGF_CRC_OFF		offsetof(struct xfs_agf, agf_crc)
+
 #define	XFS_AGF_MAGICNUM	0x00000001
 #define	XFS_AGF_VERSIONNUM	0x00000002
 #define	XFS_AGF_SEQNO		0x00000004
@@ -127,8 +129,6 @@ typedef struct xfs_agf {
 
 extern int xfs_read_agf(struct xfs_mount *mp, struct xfs_trans *tp,
 			xfs_agnumber_t agno, int flags, struct xfs_buf **bpp);
-
-extern const struct xfs_buf_ops xfs_agf_buf_ops;
 
 /*
  * Size of the unlinked inode hash table in the agi.
@@ -169,6 +169,8 @@ typedef struct xfs_agi {
 	/* structure must be padded to 64 bit alignment */
 } xfs_agi_t;
 
+#define XFS_AGI_CRC_OFF		offsetof(struct xfs_agi, agi_crc)
+
 #define	XFS_AGI_MAGICNUM	0x00000001
 #define	XFS_AGI_VERSIONNUM	0x00000002
 #define	XFS_AGI_SEQNO		0x00000004
@@ -190,8 +192,6 @@ typedef struct xfs_agi {
 
 extern int xfs_read_agi(struct xfs_mount *mp, struct xfs_trans *tp,
 				xfs_agnumber_t agno, struct xfs_buf **bpp);
-
-extern const struct xfs_buf_ops xfs_agi_buf_ops;
 
 /*
  * The third a.g. block contains the a.g. freelist, an array
@@ -225,6 +225,8 @@ typedef struct xfs_agfl {
 	__be32		agfl_crc;
 	__be32		agfl_bno[];	/* actually XFS_AGFL_SIZE(mp) */
 } xfs_agfl_t;
+
+#define XFS_AGFL_CRC_OFF	offsetof(struct xfs_agfl, agfl_crc)
 
 /*
  * tags for inode radix tree

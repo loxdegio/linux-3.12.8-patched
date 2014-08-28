@@ -223,6 +223,39 @@ struct cx23885_board cx23885_boards[] = {
 		.name		= "Leadtek Winfast PxDVR3200 H",
 		.portc		= CX23885_MPEG_DVB,
 	},
+	[CX23885_BOARD_LEADTEK_WINFAST_PXPVR2200] = {
+		.name		= "Leadtek Winfast PxPVR2200",
+		.porta		= CX23885_ANALOG_VIDEO,
+		.tuner_type	= TUNER_XC2028,
+		.tuner_addr	= 0x61,
+		.tuner_bus	= 1,
+		.input		= {{
+			.type	= CX23885_VMUX_TELEVISION,
+			.vmux	= CX25840_VIN2_CH1 |
+				  CX25840_VIN5_CH2,
+			.amux	= CX25840_AUDIO8,
+			.gpio0	= 0x704040,
+		}, {
+			.type	= CX23885_VMUX_COMPOSITE1,
+			.vmux	= CX25840_COMPOSITE1,
+			.amux	= CX25840_AUDIO7,
+			.gpio0	= 0x704040,
+		}, {
+			.type	= CX23885_VMUX_SVIDEO,
+			.vmux	= CX25840_SVIDEO_LUMA3 |
+				  CX25840_SVIDEO_CHROMA4,
+			.amux	= CX25840_AUDIO7,
+			.gpio0	= 0x704040,
+		}, {
+			.type	= CX23885_VMUX_COMPONENT,
+			.vmux	= CX25840_VIN7_CH1 |
+				  CX25840_VIN6_CH2 |
+				  CX25840_VIN8_CH3 |
+				  CX25840_COMPONENT_ON,
+			.amux	= CX25840_AUDIO7,
+			.gpio0	= 0x704040,
+		} },
+	},
 	[CX23885_BOARD_LEADTEK_WINFAST_PXDVR3200_H_XC4000] = {
 		.name		= "Leadtek Winfast PxDVR3200 H XC4000",
 		.porta		= CX23885_ANALOG_VIDEO,
@@ -258,6 +291,16 @@ struct cx23885_board cx23885_boards[] = {
 	[CX23885_BOARD_TBS_6920] = {
 		.name		= "TurboSight TBS 6920",
 		.portb		= CX23885_MPEG_DVB,
+	},
+	[CX23885_BOARD_TBS_6980] = {
+		.name		= "TurboSight TBS 6980",
+		.portb		= CX23885_MPEG_DVB,
+		.portc		= CX23885_MPEG_DVB,
+	},
+	[CX23885_BOARD_TBS_6981] = {
+		.name		= "TurboSight TBS 6981",
+		.portb		= CX23885_MPEG_DVB,
+		.portc		= CX23885_MPEG_DVB,
 	},
 	[CX23885_BOARD_TEVII_S470] = {
 		.name		= "TeVii S470",
@@ -570,34 +613,6 @@ struct cx23885_board cx23885_boards[] = {
 		.name		= "TeVii S471",
 		.portb		= CX23885_MPEG_DVB,
 	},
-	[CX23885_BOARD_BST_PS8512] = {
-		.name		= "Bestunar PS8512",
-		.portb		= CX23885_MPEG_DVB,
-	},
-	[CX23885_BOARD_DVBSKY_S950] = {
-		.name		= "DVBSKY S950",
-		.portb		= CX23885_MPEG_DVB,
-	},
-	[CX23885_BOARD_DVBSKY_S952] = {
-		.name		= "DVBSKY S952",
-		.portb		= CX23885_MPEG_DVB,
-		.portc		= CX23885_MPEG_DVB,
-	},
-	[CX23885_BOARD_DVBSKY_S950_CI] = {
-		.ci_type	= 3,
-		.name		= "DVBSKY S950CI DVB-S2 CI",
-		.portb		= CX23885_MPEG_DVB,
-	},
-	[CX23885_BOARD_DVBSKY_C2800E_CI] = {
-		.ci_type	= 3,
-		.name		= "DVBSKY C2800E DVB-C CI",
-		.portb		= CX23885_MPEG_DVB,
-	},
-	[CX23885_BOARD_DVBSKY_T9580] = {
-		.name		= "DVBSKY T9580",
-		.portb		= CX23885_MPEG_DVB,
-		.portc		= CX23885_MPEG_DVB,
-	},
 	[CX23885_BOARD_PROF_8000] = {
 		.name		= "Prof Revolution DVB-S2 8000",
 		.portb		= CX23885_MPEG_DVB,
@@ -716,6 +731,10 @@ struct cx23885_subid cx23885_subids[] = {
 		.card      = CX23885_BOARD_LEADTEK_WINFAST_PXDVR3200_H,
 	}, {
 		.subvendor = 0x107d,
+		.subdevice = 0x6f21,
+		.card      = CX23885_BOARD_LEADTEK_WINFAST_PXPVR2200,
+	}, {
+		.subvendor = 0x107d,
 		.subdevice = 0x6f39,
 		.card	   = CX23885_BOARD_LEADTEK_WINFAST_PXDVR3200_H_XC4000,
 	}, {
@@ -726,6 +745,14 @@ struct cx23885_subid cx23885_subids[] = {
 		.subvendor = 0x6920,
 		.subdevice = 0x8888,
 		.card      = CX23885_BOARD_TBS_6920,
+	}, {
+		.subvendor = 0x6980,
+		.subdevice = 0x8888,
+		.card      = CX23885_BOARD_TBS_6980,
+	}, {
+		.subvendor = 0x6981,
+		.subdevice = 0x8888,
+		.card      = CX23885_BOARD_TBS_6981,
 	}, {
 		.subvendor = 0xd470,
 		.subdevice = 0x9022,
@@ -846,30 +873,6 @@ struct cx23885_subid cx23885_subids[] = {
 		.subvendor = 0xd471,
 		.subdevice = 0x9022,
 		.card      = CX23885_BOARD_TEVII_S471,
-	}, {
-		.subvendor = 0x14f1,
-		.subdevice = 0x8512,
-		.card      = CX23885_BOARD_BST_PS8512,
-	}, {
-		.subvendor = 0x4254,
-		.subdevice = 0x0950,
-		.card      = CX23885_BOARD_DVBSKY_S950,		
-	}, {
-		.subvendor = 0x4254,
-		.subdevice = 0x0952,
-		.card      = CX23885_BOARD_DVBSKY_S952,
-	}, {
-		.subvendor = 0x4254,
-		.subdevice = 0x950C,
-		.card      = CX23885_BOARD_DVBSKY_S950_CI,
-	}, {
-		.subvendor = 0x4254,
-		.subdevice = 0x2800,
-		.card      = CX23885_BOARD_DVBSKY_C2800E_CI,
-	}, {
-		.subvendor = 0x4254,
-		.subdevice = 0x9580,
-		.card      = CX23885_BOARD_DVBSKY_T9580,
 	}, {
 		.subvendor = 0x8000,
 		.subdevice = 0x3034,
@@ -1075,6 +1078,35 @@ static void hauppauge_eeprom(struct cx23885_dev *dev, u8 *eeprom_data)
 			dev->name, tv.model);
 }
 
+/* Some TBS cards require initing a chip using a bitbanged SPI attached
+   to the cx23885 gpio's. If this chip doesn't get init'ed the demod
+   doesn't respond to any command. */
+static void tbs_card_init(struct cx23885_dev *dev)
+{
+	int i;
+	const u8 buf[] = {
+		0xe0, 0x06, 0x66, 0x33, 0x65,
+		0x01, 0x17, 0x06, 0xde};
+
+	switch (dev->board) {
+	case CX23885_BOARD_TBS_6980:
+	case CX23885_BOARD_TBS_6981:
+		cx_set(GP0_IO, 0x00070007);
+		usleep_range(1000, 10000);
+		cx_clear(GP0_IO, 2);
+		usleep_range(1000, 10000);
+		for (i = 0; i < 9 * 8; i++) {
+			cx_clear(GP0_IO, 7);
+			usleep_range(1000, 10000);
+			cx_set(GP0_IO,
+				((buf[i >> 3] >> (7 - (i & 7))) & 1) | 4);
+			usleep_range(1000, 10000);
+		}
+		cx_set(GP0_IO, 7);
+		break;
+	}
+}
+
 int cx23885_tuner_callback(void *priv, int component, int command, int arg)
 {
 	struct cx23885_tsport *port = priv;
@@ -1095,6 +1127,7 @@ int cx23885_tuner_callback(void *priv, int component, int command, int arg)
 	case CX23885_BOARD_HAUPPAUGE_HVR1500:
 	case CX23885_BOARD_HAUPPAUGE_HVR1500Q:
 	case CX23885_BOARD_LEADTEK_WINFAST_PXDVR3200_H:
+	case CX23885_BOARD_LEADTEK_WINFAST_PXPVR2200:
 	case CX23885_BOARD_LEADTEK_WINFAST_PXDVR3200_H_XC4000:
 	case CX23885_BOARD_COMPRO_VIDEOMATE_E650F:
 	case CX23885_BOARD_COMPRO_VIDEOMATE_E800:
@@ -1260,6 +1293,7 @@ void cx23885_gpio_setup(struct cx23885_dev *dev)
 		cx_set(GP0_IO, 0x000f000f);
 		break;
 	case CX23885_BOARD_LEADTEK_WINFAST_PXDVR3200_H:
+	case CX23885_BOARD_LEADTEK_WINFAST_PXPVR2200:
 	case CX23885_BOARD_LEADTEK_WINFAST_PXDVR3200_H_XC4000:
 	case CX23885_BOARD_COMPRO_VIDEOMATE_E650F:
 	case CX23885_BOARD_COMPRO_VIDEOMATE_E800:
@@ -1277,6 +1311,8 @@ void cx23885_gpio_setup(struct cx23885_dev *dev)
 		cx_set(GP0_IO, 0x00040004);
 		break;
 	case CX23885_BOARD_TBS_6920:
+	case CX23885_BOARD_TBS_6980:
+	case CX23885_BOARD_TBS_6981:
 	case CX23885_BOARD_PROF_8000:
 		cx_write(MC417_CTL, 0x00000036);
 		cx_write(MC417_OEN, 0x00001000);
@@ -1447,82 +1483,7 @@ void cx23885_gpio_setup(struct cx23885_dev *dev)
 		cx_set(GP0_IO, 0x00040004);
 		mdelay(60);
 		break;
-	case CX23885_BOARD_DVBSKY_S950:
-	case CX23885_BOARD_BST_PS8512:			
-		cx23885_gpio_enable(dev, GPIO_2, 1);
-		cx23885_gpio_clear(dev, GPIO_2);
-		msleep(100);		
-		cx23885_gpio_set(dev, GPIO_2);
-		break;
-	case CX23885_BOARD_DVBSKY_S952:
-	case CX23885_BOARD_DVBSKY_T9580:
-		cx_write(MC417_CTL, 0x00000037);/* enable GPIO3-18 pins */
-		
-		cx23885_gpio_enable(dev, GPIO_2, 1);
-		cx23885_gpio_enable(dev, GPIO_11, 1);
-		
-		cx23885_gpio_clear(dev, GPIO_2);
-		cx23885_gpio_clear(dev, GPIO_11);
-		msleep(100);		
-		cx23885_gpio_set(dev, GPIO_2);
-		cx23885_gpio_set(dev, GPIO_11);	
-		break;
-	case CX23885_BOARD_DVBSKY_S950_CI:
-	case CX23885_BOARD_DVBSKY_C2800E_CI:
-		/* GPIO-0 INTA from CiMax, input
-		   GPIO-1 reset CiMax, output, high active
-		   GPIO-2 reset demod, output, low active
-		   GPIO-3 to GPIO-10 data/addr for CAM
-		   GPIO-11 ~CS0 to CiMax1
-		   GPIO-12 ~CS1 to CiMax2
-		   GPIO-13 ADL0 load LSB addr
-		   GPIO-14 ADL1 load MSB addr
-		   GPIO-15 ~RDY from CiMax
-		   GPIO-17 ~RD to CiMax
-		   GPIO-18 ~WR to CiMax
-		 */
-		cx_set(GP0_IO, 0x00060002); /* GPIO 1/2 as output */
-		cx_clear(GP0_IO, 0x00010004); /*GPIO 0 as input*/
-		mdelay(100);/* reset delay */
-		cx_set(GP0_IO, 0x00060004); /* GPIO as out, reset high */
-		cx_clear(GP0_IO, 0x00010002);
-		cx_write(MC417_CTL, 0x00000037);/* enable GPIO3-18 pins */
-		/* GPIO-15 IN as ~ACK, rest as OUT */
-		cx_write(MC417_OEN, 0x00001000);
-		/* ~RD, ~WR high; ADL0, ADL1 low; ~CS0, ~CS1 high */
-		cx_write(MC417_RWD, 0x0000c300);
-		/* enable irq */
-		cx_write(GPIO_ISM, 0x00000000);/* INTERRUPTS active low*/
-		break;
 	}
-}
-
-static int cx23885_ir_patch(struct i2c_adapter *i2c, u8 reg, u8 mask)
-{
-	struct i2c_msg msgs[2];
-	u8 tx_buf[2], rx_buf[1];
-	/* Write register address */
-	tx_buf[0] = reg;
-	msgs[0].addr = 0x4c;
-	msgs[0].flags = 0;
-	msgs[0].len = 1;
-	msgs[0].buf = (char *) tx_buf;
-	/* Read data from register */
-	msgs[1].addr = 0x4c;
-	msgs[1].flags = I2C_M_RD;
-	msgs[1].len = 1;
-	msgs[1].buf = (char *) rx_buf;	
-	
-	i2c_transfer(i2c, msgs, 2);
-
-	tx_buf[0] = reg;
-	tx_buf[1] = rx_buf[0] | mask;
-	msgs[0].addr = 0x4c;
-	msgs[0].flags = 0;
-	msgs[0].len = 2;
-	msgs[0].buf = (char *) tx_buf;
-	
-	return i2c_transfer(i2c, msgs, 1);
 }
 
 int cx23885_ir_init(struct cx23885_dev *dev)
@@ -1600,6 +1561,8 @@ int cx23885_ir_init(struct cx23885_dev *dev)
 	case CX23885_BOARD_TERRATEC_CINERGY_T_PCIE_DUAL:
 	case CX23885_BOARD_TEVII_S470:
 	case CX23885_BOARD_MYGICA_X8507:
+	case CX23885_BOARD_TBS_6980:
+	case CX23885_BOARD_TBS_6981:
 		if (!enable_885_ir)
 			break;
 		dev->sd_ir = cx23885_find_hw(dev, CX23885_HW_AV_CORE);
@@ -1609,23 +1572,6 @@ int cx23885_ir_init(struct cx23885_dev *dev)
 		}
 		v4l2_subdev_call(dev->sd_cx25840, core, s_io_pin_config,
 				 ir_rx_pin_cfg_count, ir_rx_pin_cfg);
-		break;
-	case CX23885_BOARD_BST_PS8512:
-	case CX23885_BOARD_DVBSKY_S950:
-	case CX23885_BOARD_DVBSKY_S952:
-	case CX23885_BOARD_DVBSKY_S950_CI:
-	case CX23885_BOARD_DVBSKY_C2800E_CI:
-	case CX23885_BOARD_DVBSKY_T9580:
-		dev->sd_ir = cx23885_find_hw(dev, CX23885_HW_AV_CORE);
-		if (dev->sd_ir == NULL) {
-			ret = -ENODEV;
-			break;
-		}
-		v4l2_subdev_call(dev->sd_cx25840, core, s_io_pin_config,
-				 ir_rx_pin_cfg_count, ir_rx_pin_cfg);
-				 
-		cx23885_ir_patch(&(dev->i2c_bus[2].i2c_adap),0x1f,0x80);
-		cx23885_ir_patch(&(dev->i2c_bus[2].i2c_adap),0x23,0x80);
 		break;
 	case CX23885_BOARD_HAUPPAUGE_HVR1250:
 		if (!enable_885_ir)
@@ -1656,16 +1602,12 @@ void cx23885_ir_fini(struct cx23885_dev *dev)
 		cx23888_ir_remove(dev);
 		dev->sd_ir = NULL;
 		break;
-	case CX23885_BOARD_BST_PS8512:
-	case CX23885_BOARD_DVBSKY_S950:
-	case CX23885_BOARD_DVBSKY_S952:
-	case CX23885_BOARD_DVBSKY_S950_CI:
-	case CX23885_BOARD_DVBSKY_C2800E_CI:
-	case CX23885_BOARD_DVBSKY_T9580:		
 	case CX23885_BOARD_TERRATEC_CINERGY_T_PCIE_DUAL:
 	case CX23885_BOARD_TEVII_S470:
 	case CX23885_BOARD_HAUPPAUGE_HVR1250:
 	case CX23885_BOARD_MYGICA_X8507:
+	case CX23885_BOARD_TBS_6980:
+	case CX23885_BOARD_TBS_6981:
 		cx23885_irq_remove(dev, PCI_MSK_AV_CORE);
 		/* sd_ir is a duplicate pointer to the AV Core, just clear it */
 		dev->sd_ir = NULL;
@@ -1707,16 +1649,12 @@ void cx23885_ir_pci_int_enable(struct cx23885_dev *dev)
 		if (dev->sd_ir)
 			cx23885_irq_add_enable(dev, PCI_MSK_IR);
 		break;
-	case CX23885_BOARD_BST_PS8512:
-	case CX23885_BOARD_DVBSKY_S950:
-	case CX23885_BOARD_DVBSKY_S952:
-	case CX23885_BOARD_DVBSKY_S950_CI:
-	case CX23885_BOARD_DVBSKY_C2800E_CI:
-	case CX23885_BOARD_DVBSKY_T9580:		
 	case CX23885_BOARD_TERRATEC_CINERGY_T_PCIE_DUAL:
 	case CX23885_BOARD_TEVII_S470:
 	case CX23885_BOARD_HAUPPAUGE_HVR1250:
 	case CX23885_BOARD_MYGICA_X8507:
+	case CX23885_BOARD_TBS_6980:
+	case CX23885_BOARD_TBS_6981:
 		if (dev->sd_ir)
 			cx23885_irq_add_enable(dev, PCI_MSK_AV_CORE);
 		break;
@@ -1814,10 +1752,6 @@ void cx23885_card_setup(struct cx23885_dev *dev)
 		ts1->ts_clk_en_val = 0x1; /* Enable TS_CLK */
 		ts1->src_sel_val   = CX23885_SRC_SEL_PARALLEL_MPEG_VIDEO;
 		break;
-	case CX23885_BOARD_BST_PS8512:
-	case CX23885_BOARD_DVBSKY_S950:
-	case CX23885_BOARD_DVBSKY_S950_CI:
-	case CX23885_BOARD_DVBSKY_C2800E_CI:
 	case CX23885_BOARD_TEVII_S470:
 	case CX23885_BOARD_TEVII_S471:
 	case CX23885_BOARD_DVBWORLD_2005:
@@ -1835,6 +1769,16 @@ void cx23885_card_setup(struct cx23885_dev *dev)
 		ts2->gen_ctrl_val  = 0xc; /* Serial bus + punctured clock */
 		ts2->ts_clk_en_val = 0x1; /* Enable TS_CLK */
 		ts2->src_sel_val   = CX23885_SRC_SEL_PARALLEL_MPEG_VIDEO;
+		break;
+	case CX23885_BOARD_TBS_6980:
+	case CX23885_BOARD_TBS_6981:
+		ts1->gen_ctrl_val  = 0xc; /* Serial bus + punctured clock */
+		ts1->ts_clk_en_val = 0x1; /* Enable TS_CLK */
+		ts1->src_sel_val   = CX23885_SRC_SEL_PARALLEL_MPEG_VIDEO;
+		ts2->gen_ctrl_val  = 0xc; /* Serial bus + punctured clock */
+		ts2->ts_clk_en_val = 0x1; /* Enable TS_CLK */
+		ts2->src_sel_val   = CX23885_SRC_SEL_PARALLEL_MPEG_VIDEO;
+		tbs_card_init(dev);
 		break;
 	case CX23885_BOARD_MYGICA_X8506:
 	case CX23885_BOARD_MAGICPRO_PROHDTVE2:
@@ -1856,22 +1800,6 @@ void cx23885_card_setup(struct cx23885_dev *dev)
 		ts1->ts_clk_en_val = 0x1; /* Enable TS_CLK */
 		ts1->src_sel_val   = CX23885_SRC_SEL_PARALLEL_MPEG_VIDEO;
 		break;
-	case CX23885_BOARD_DVBSKY_S952:
-		ts1->gen_ctrl_val  = 0x5; /* Parallel */
-		ts1->ts_clk_en_val = 0x1; /* Enable TS_CLK */
-		ts1->src_sel_val   = CX23885_SRC_SEL_PARALLEL_MPEG_VIDEO;
-		ts2->gen_ctrl_val  = 0xe; /* Serial bus + punctured clock */
-		ts2->ts_clk_en_val = 0x1; /* Enable TS_CLK */
-		ts2->src_sel_val   = CX23885_SRC_SEL_PARALLEL_MPEG_VIDEO;
-		break;
-	case CX23885_BOARD_DVBSKY_T9580:
-		ts1->gen_ctrl_val  = 0x5; /* Parallel */
-		ts1->ts_clk_en_val = 0x1; /* Enable TS_CLK */
-		ts1->src_sel_val   = CX23885_SRC_SEL_PARALLEL_MPEG_VIDEO;
-		ts2->gen_ctrl_val  = 0x8; /* Serial bus */
-		ts2->ts_clk_en_val = 0x1; /* Enable TS_CLK */
-		ts2->src_sel_val   = CX23885_SRC_SEL_PARALLEL_MPEG_VIDEO;
-		break;		
 	case CX23885_BOARD_HAUPPAUGE_HVR1250:
 	case CX23885_BOARD_HAUPPAUGE_HVR1500:
 	case CX23885_BOARD_HAUPPAUGE_HVR1500Q:
@@ -1880,6 +1808,7 @@ void cx23885_card_setup(struct cx23885_dev *dev)
 	case CX23885_BOARD_HAUPPAUGE_HVR1700:
 	case CX23885_BOARD_HAUPPAUGE_HVR1400:
 	case CX23885_BOARD_LEADTEK_WINFAST_PXDVR3200_H:
+	case CX23885_BOARD_LEADTEK_WINFAST_PXPVR2200:
 	case CX23885_BOARD_LEADTEK_WINFAST_PXDVR3200_H_XC4000:
 	case CX23885_BOARD_COMPRO_VIDEOMATE_E650F:
 	case CX23885_BOARD_HAUPPAUGE_HVR1270:
@@ -1909,6 +1838,7 @@ void cx23885_card_setup(struct cx23885_dev *dev)
 	case CX23885_BOARD_HAUPPAUGE_HVR1800lp:
 	case CX23885_BOARD_HAUPPAUGE_HVR1700:
 	case CX23885_BOARD_LEADTEK_WINFAST_PXDVR3200_H:
+	case CX23885_BOARD_LEADTEK_WINFAST_PXPVR2200:
 	case CX23885_BOARD_LEADTEK_WINFAST_PXDVR3200_H_XC4000:
 	case CX23885_BOARD_COMPRO_VIDEOMATE_E650F:
 	case CX23885_BOARD_NETUP_DUAL_DVBS2_CI:
@@ -1927,13 +1857,9 @@ void cx23885_card_setup(struct cx23885_dev *dev)
 	case CX23885_BOARD_MPX885:
 	case CX23885_BOARD_MYGICA_X8507:
 	case CX23885_BOARD_TERRATEC_CINERGY_T_PCIE_DUAL:
-	case CX23885_BOARD_BST_PS8512:
-	case CX23885_BOARD_DVBSKY_S950:
-	case CX23885_BOARD_DVBSKY_S952:
-	case CX23885_BOARD_DVBSKY_S950_CI:
-	case CX23885_BOARD_DVBSKY_C2800E_CI:
-	case CX23885_BOARD_DVBSKY_T9580:
 	case CX23885_BOARD_AVERMEDIA_HC81R:
+	case CX23885_BOARD_TBS_6980:
+	case CX23885_BOARD_TBS_6981:
 		dev->sd_cx25840 = v4l2_i2c_new_subdev(&dev->v4l2_dev,
 				&dev->i2c_bus[2].i2c_adap,
 				"cx25840", 0x88 >> 1, NULL);

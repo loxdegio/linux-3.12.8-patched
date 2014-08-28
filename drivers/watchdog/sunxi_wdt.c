@@ -205,7 +205,7 @@ static void sunxi_wdt_shutdown(struct platform_device *pdev)
 }
 
 static const struct of_device_id sunxi_wdt_dt_ids[] = {
-	{ .compatible = "allwinner,sun4i-wdt" },
+	{ .compatible = "allwinner,sun4i-a10-wdt" },
 	{ /* sentinel */ }
 };
 MODULE_DEVICE_TABLE(of, sunxi_wdt_dt_ids);
@@ -217,7 +217,7 @@ static struct platform_driver sunxi_wdt_driver = {
 	.driver		= {
 		.owner		= THIS_MODULE,
 		.name		= DRV_NAME,
-		.of_match_table	= of_match_ptr(sunxi_wdt_dt_ids)
+		.of_match_table	= sunxi_wdt_dt_ids,
 	},
 };
 

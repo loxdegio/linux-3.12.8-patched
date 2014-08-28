@@ -981,16 +981,6 @@ static int stb0899_read_signal_strength(struct dvb_frontend *fe, u16 *strength)
 
 				*strength = stb0899_table_lookup(stb0899_dvbsrf_tab, ARRAY_SIZE(stb0899_dvbsrf_tab) - 1, val);
 				*strength += 750;
-
-		            	const int MIN_STRENGTH_DVBS = 0;
-		            	const int MAX_STRENGTH_DVBS = 680;
-		            	if (*strength < MIN_STRENGTH_DVBS) 	
-		                	*strength = 0;
-		            	else if(*strength > MAX_STRENGTH_DVBS) 
-		                	*strength = 0xFFFF;
-		            	else
-				    	*strength = (*strength - MIN_STRENGTH_DVBS) * 0xFFFF / (MAX_STRENGTH_DVBS - MIN_STRENGTH_DVBS); 
-
 				dprintk(state->verbose, FE_DEBUG, 1, "AGCIQVALUE = 0x%02x, C = %d * 0.1 dBm",
 					val & 0xff, *strength);
 			}
@@ -1003,7 +993,6 @@ static int stb0899_read_signal_strength(struct dvb_frontend *fe, u16 *strength)
 
 			*strength = stb0899_table_lookup(stb0899_dvbs2rf_tab, ARRAY_SIZE(stb0899_dvbs2rf_tab) - 1, val);
 			*strength += 950;
-			*strength = *strength << 4;
 			dprintk(state->verbose, FE_DEBUG, 1, "IF_AGC_GAIN = 0x%04x, C = %d * 0.1 dBm",
 				val & 0x3fff, *strength);
 		}
@@ -1037,16 +1026,6 @@ static int stb0899_read_snr(struct dvb_frontend *fe, u16 *snr)
 				val = MAKEWORD16(buf[0], buf[1]);
 
 				*snr = stb0899_table_lookup(stb0899_cn_tab, ARRAY_SIZE(stb0899_cn_tab) - 1, val);
-
-		            	const int MIN_SNR_DVBS = 0;
-		            	const int MAX_SNR_DVBS = 200;
-		            	if (*snr < MIN_SNR_DVBS) 	
-		                	*snr = 0;
-		            	else if(*snr > MAX_SNR_DVBS) 
-		                	*snr = 0xFFFF;
-		            	else
-				    	*snr = (*snr - MIN_SNR_DVBS) * 0xFFFF / (MAX_SNR_DVBS - MIN_SNR_DVBS);
-
 				dprintk(state->verbose, FE_DEBUG, 1, "NIR = 0x%02x%02x = %u, C/N = %d * 0.1 dBm\n",
 					buf[0], buf[1], val, *snr);
 			}
@@ -1071,16 +1050,6 @@ static int stb0899_read_snr(struct dvb_frontend *fe, u16 *snr)
 				val = (quantn - estn) / 10;
 			}
 			*snr = val;
-
-	        	const int MIN_SNR_DVBS2 = 10;
-	        	const int MAX_SNR_DVBS2 = 70;
-	        	if (*snr < MIN_SNR_DVBS2) 	
-		            	*snr = 0;
-	        	else if(*snr > MAX_SNR_DVBS2) 
-        		    	*snr = 0xFFFF;
-        		else
-				*snr = (*snr - MIN_SNR_DVBS2) * 0xFFFF / (MAX_SNR_DVBS2 - MIN_SNR_DVBS2); 
-
 			dprintk(state->verbose, FE_DEBUG, 1, "Es/N0 quant = %d (%d) estimate = %u (%d), C/N = %d * 0.1 dBm",
 				quant, quantn, est, estn, val);
 		}
@@ -1622,7 +1591,7 @@ static struct dvb_frontend_ops stb0899_ops = {
 		.frequency_max 		= 2150000,
 		.frequency_stepsize	= 0,
 		.frequency_tolerance	= 0,
-		.symbol_rate_min 	=  1000000,
+		.symbol_rate_min 	=  5000000,
 		.symbol_rate_max 	= 45000000,
 
 		.caps 			= FE_CAN_INVERSION_AUTO	|

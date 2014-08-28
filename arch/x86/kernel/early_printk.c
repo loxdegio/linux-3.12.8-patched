@@ -14,9 +14,11 @@
 #include <xen/hvc-console.h>
 #include <asm/pci-direct.h>
 #include <asm/fixmap.h>
-#include <asm/mrst.h>
+#include <asm/intel-mid.h>
 #include <asm/pgtable.h>
 #include <linux/usb/ehci_def.h>
+#include <linux/efi.h>
+#include <asm/efi.h>
 
 /* Simple VGA output */
 #define VGABASE		(__ISA_IO_base + 0xb8000)
@@ -24,8 +26,7 @@
 static int max_ypos = 25, max_xpos = 80;
 static int current_ypos = 25, current_xpos;
 
-static void early_vga_write(struct console *con, const char *str, unsigned n,
-                            unsigned int loglevel)
+static void early_vga_write(struct console *con, const char *str, unsigned n)
 {
 	char c;
 	int  i, k, j;
@@ -103,8 +104,7 @@ static int early_serial_putc(unsigned char ch)
 	return timeout ? 0 : -1;
 }
 
-static void early_serial_write(struct console *con, const char *s, unsigned n,
-                               unsigned int loglevel)
+static void early_serial_write(struct console *con, const char *s, unsigned n)
 {
 	while (*s && n-- > 0) {
 		if (*s == '\n')
@@ -236,6 +236,11 @@ static int __init setup_early_printk(char *buf)
 			early_console_register(&early_hsu_console, keep);
 		}
 #endif
+#ifdef CONFIG_EARLY_PRINTK_EFI
+		if (!strncmp(buf, "efi", 3))
+			early_console_register(&early_efi_console, keep);
+#endif
+
 		buf++;
 	}
 	return 0;

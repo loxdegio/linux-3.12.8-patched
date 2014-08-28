@@ -103,6 +103,8 @@ static int dw_i2c_acpi_configure(struct platform_device *pdev)
 static const struct acpi_device_id dw_i2c_acpi_match[] = {
 	{ "INT33C2", 0 },
 	{ "INT33C3", 0 },
+	{ "INT3432", 0 },
+	{ "INT3433", 0 },
 	{ "80860F41", 0 },
 	{ }
 };
@@ -157,6 +159,13 @@ static int dw_i2c_probe(struct platform_device *pdev)
 					"i2c-sda-hold-time-ns", &ht);
 		dev->sda_hold_time = div_u64((u64)ic_clk * ht + 500000,
 					     1000000);
+
+		of_property_read_u32(pdev->dev.of_node,
+				     "i2c-sda-falling-time-ns",
+				     &dev->sda_falling_time);
+		of_property_read_u32(pdev->dev.of_node,
+				     "i2c-scl-falling-time-ns",
+				     &dev->scl_falling_time);
 	}
 
 	dev->functionality =
@@ -193,7 +202,7 @@ static int dw_i2c_probe(struct platform_device *pdev)
 	adap = &dev->adapter;
 	i2c_set_adapdata(adap, dev);
 	adap->owner = THIS_MODULE;
-	adap->class = I2C_CLASS_HWMON;
+	adap->class = I2C_CLASS_HWMON | I2C_CLASS_DEPRECATED;
 	strlcpy(adap->name, "Synopsys DesignWare I2C adapter",
 			sizeof(adap->name));
 	adap->algo = &i2c_dw_algo;
