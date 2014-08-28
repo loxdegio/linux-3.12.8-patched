@@ -28,9 +28,34 @@ config BUILDTIME_EXTABLE_SORT
 
 menu "General setup"
 
+config ZEN_INTERACTIVE
+	bool "Tune kernel for interactivity"
+	default y
+	help
+	  Tunes the kernel for responsiveness at the cost of throughput and power usage.
+
+	  --- VM ---
+	    Mem dirty before bg writeback..: 10 %  -> 20 %
+	    Mem dirty before sync writeback: 20 %  -> 50 %
+
+	  --- CPU Scheduler (CFS) ---
+	    Scheduling latency.............:  6    ->  3    ms
+	    Minimal granularity............:  0.75 ->  0.3  ms
+	    Wakeup granularity.............:  1    ->  0.5  ms
+	    CPU migration cost.............:  0.5  ->  0.25 ms
+	    Bandwidth slice size...........:  5    ->  3    ms
+
+	  --- CPU Scheduler (BFS) ---
+	    Scheduling interval............:  6    ->  3    ms
+	    ISO task max realtime use......: 70 %  -> 30 %
+
+	  --- CPU Frequency Scaling ---
+	    Ondemand down scaling factor...:  1    -> 10
+
 config SCHED_BFS
 	bool "BFS cpu scheduler"
-	---help---
+	default n
+	help
 	  The Brain Fuck CPU Scheduler for excellent interactivity and
 	  responsiveness on the desktop and solid scalability on normal
           hardware and commodity servers. Not recommended for 4096 CPUs.
@@ -38,9 +63,17 @@ config SCHED_BFS
 	  Currently incompatible with the Group CPU scheduler, and RCU TORTURE
           TEST so these options are disabled.
 
-          Say Y here.
-	default y
+config SCHED_BFS_AUTOISO
+	bool "Automatically use SCHED_ISO policy for X"
+	depends on SCHED_BFS
+	default n
+	help
+	  Selecting this option will automatically use the SCHED_ISO scheduling
+	  policy for X, resulting in an interactivity boost. This *may* cause
+	  things like skipping sound on audio applications that are not run
+	  as SCHED_ISO.
 
+	  Tasks (including X) can be run as sched_iso manually using schedtool.
 
 config BROKEN
 	bool
@@ -274,6 +307,16 @@ config POSIX_MQUEUE_SYSCTL
 	depends on POSIX_MQUEUE
 	depends on SYSCTL
 	default y
+
+config CROSS_MEMORY_ATTACH
+	bool "Enable process_vm_readv/writev syscalls"
+	depends on MMU
+	default y
+	help
+	  Enabling this option adds the system calls process_vm_readv and
+	  process_vm_writev which allow a process with the correct privileges
+	  to directly read from or write to to another process's address space.
+	  See the man page for more details.
 
 config FHANDLE
 	bool "open by fhandle syscalls"
@@ -950,7 +993,6 @@ config RESOURCE_COUNTERS
 config MEMCG
 	bool "Memory Resource Controller for Control Groups"
 	depends on RESOURCE_COUNTERS
-	select MM_OWNER
 	select EVENTFD
 	help
 	  Provides a memory resource controller that manages both anonymous
@@ -967,9 +1009,6 @@ config MEMCG
 	  this, you can set "cgroup_disable=memory" at your boot option to
 	  disable memory resource controller and you can avoid overheads.
 	  (and lose benefits of memory resource controller)
-
-	  This config option also selects MM_OWNER config option, which
-	  could in turn add some fork/exit overhead.
 
 config MEMCG_SWAP
 	bool "Memory Resource Controller Swap Extension"
@@ -1012,6 +1051,12 @@ config MEMCG_KMEM
 	  Memory Controller, which are page-based, and can be swapped. Users of
 	  the kmem extension can use it to guarantee that no group of processes
 	  will ever exhaust kernel resources alone.
+
+	  WARNING: Current implementation lacks reclaim support. That means
+	  allocation attempts will fail when close to the limit even if there
+	  are plenty of kmem available for reclaim. That makes this option
+	  unusable in real life so DO NOT SELECT IT unless for development
+	  purposes.
 
 config CGROUP_HUGETLB
 	bool "HugeTLB Resource Controller for Control Groups"
@@ -1110,7 +1155,7 @@ config DEBUG_BLK_CGROUP
 endif # CGROUPS
 
 config CHECKPOINT_RESTORE
-	bool "Checkpoint/restore support" if EXPERT
+	bool "Checkpoint/restore support"
 	default n
 	help
 	  Enables additional kernel features in a sake of checkpoint/restore.
@@ -1191,9 +1236,6 @@ config SCHED_AUTOGROUP
 	  of workloads isolates aggressive CPU burners (like build jobs) from
 	  desktop applications.  Task group autogeneration is currently based
 	  upon task session.
-
-config MM_OWNER
-	bool
 
 config SYSFS_DEPRECATED
 	bool "Enable deprecated sysfs features to support old userspace tools"
@@ -1322,6 +1364,16 @@ config UID16
 	default y
 	help
 	  This enables the legacy 16-bit UID syscall wrappers.
+
+config SGETMASK_SYSCALL
+	bool "sgetmask/ssetmask syscalls support" if EXPERT
+	def_bool PARISC || MN10300 || BLACKFIN || M68K || PPC || MIPS || X86 || SPARC || CRIS || MICROBLAZE || SUPERH
+	---help---
+	  sys_sgetmask and sys_ssetmask are obsolete system calls
+	  no longer supported in libc but still enabled by default in some
+	  architectures.
+
+	  If unsure, leave the default option here.
 
 config SYSFS_SYSCALL
 	bool "Sysfs syscall support" if EXPERT
@@ -1599,8 +1651,39 @@ config COMPAT_BRK
 
 	  On non-ancient distros (post-2000 ones) N is usually a safe choice.
 
+choice
+	prompt "Choose SLAB allocator"
+	default SLUB
+	help
+	   This option allows to select a slab allocator.
+
+config SLAB
+	depends on !SCHED_BFS
+	bool "SLAB"
+	help
+	  The regular slab allocator that is established and known to work
+	  well in all environments. It organizes cache hot objects in
+	  per cpu and per node queues.
+
 config SLUB
-	def_bool y
+	bool "SLUB (Unqueued Allocator)"
+	help
+	   SLUB is a slab allocator that minimizes cache line usage
+	   instead of managing queues of cached objects (SLAB approach).
+	   Per cpu caching is realized using slabs of objects instead
+	   of queues of objects. SLUB can use memory efficiently
+	   and has enhanced diagnostics. SLUB is the default choice for
+	   a slab allocator.
+
+config SLOB
+	depends on EXPERT && !SCHED_BFS
+	bool "SLOB (Simple Allocator)"
+	help
+	   SLOB replaces the stock allocator with a drastically simpler
+	   allocator. SLOB is generally more space efficient but
+	   does not perform as well on large systems.
+
+endchoice
 
 config SLUB_CPU_PARTIAL
 	default y

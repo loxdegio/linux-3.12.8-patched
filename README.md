@@ -1,19 +1,17 @@
-linux-3.15.10-patched
+linux-3.16.x-patched
 ====================
-
-La versione 3.15.10 è EOL per la release 3.15
 
 Versione del geek kernel con le patch scelte da me
 
-bfq ck uksm suse
+bfq bfs bld uksm suse zen
 
 Se vuoi scaricare questo repo e rimanere aggiornato con tutte le modifiche digita su terminale:
 
-git clone https://github.com/loxdegio/linux-patched -b 3.15-geek
+git clone https://github.com/loxdegio/linux-patched
 
 If you want to download and keep upgraded this repo type on terminal:
 
-git clone https://github.com/loxdegio/linux-patched -b 3.15-geek
+git clone https://github.com/loxdegio/linux-patched
 
 
 COMPILATION INSTRUCTIONS
