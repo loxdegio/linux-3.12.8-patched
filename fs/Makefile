@@ -14,14 +14,13 @@ obj-y :=	open.o read_write.o file_table.o super.o \
 		stack.o fs_struct.o statfs.o
 
 ifeq ($(CONFIG_BLOCK),y)
-obj-y +=	buffer.o bio.o block_dev.o direct-io.o mpage.o ioprio.o
+obj-y +=	buffer.o block_dev.o direct-io.o mpage.o
 else
 obj-y +=	no-block.o
 endif
 
 obj-$(CONFIG_PROC_FS) += proc_namespace.o
 
-obj-$(CONFIG_BLK_DEV_INTEGRITY) += bio-integrity.o
 obj-y				+= notify/
 obj-$(CONFIG_EPOLL)		+= eventpoll.o
 obj-$(CONFIG_ANON_INODES)	+= anon_inodes.o
@@ -126,3 +125,4 @@ obj-y				+= exofs/ # Multiple modules
 obj-$(CONFIG_CEPH_FS)		+= ceph/
 obj-$(CONFIG_PSTORE)		+= pstore/
 obj-$(CONFIG_EFIVAR_FS)		+= efivarfs/
+obj-$(CONFIG_AUFS_FS)           += aufs/

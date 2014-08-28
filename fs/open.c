@@ -34,6 +34,9 @@
 
 #include "internal.h"
 
+#define CREATE_TRACE_POINTS
+#include <trace/events/fs.h>
+
 int do_truncate(struct dentry *dentry, loff_t length, unsigned int time_attrs,
 	struct file *filp)
 {
@@ -62,6 +65,7 @@ int do_truncate(struct dentry *dentry, loff_t length, unsigned int time_attrs,
 	mutex_unlock(&dentry->d_inode->i_mutex);
 	return ret;
 }
+EXPORT_SYMBOL(do_truncate);
 
 long vfs_truncate(struct path *path, loff_t length)
 {
@@ -298,6 +302,7 @@ int do_fallocate(struct file *file, int mode, loff_t offset, loff_t len)
 	sb_end_write(inode->i_sb);
 	return ret;
 }
+EXPORT_SYMBOL(do_fallocate);
 
 SYSCALL_DEFINE4(fallocate, int, fd, int, mode, loff_t, offset, loff_t, len)
 {
@@ -724,6 +729,12 @@ static int do_dentry_open(struct file *f,
 	}
 	if ((f->f_mode & (FMODE_READ | FMODE_WRITE)) == FMODE_READ)
 		i_readcount_inc(inode);
+	if ((f->f_mode & FMODE_READ) &&
+	     likely(f->f_op->read || f->f_op->aio_read || f->f_op->read_iter))
+		f->f_mode |= FMODE_CAN_READ;
+	if ((f->f_mode & FMODE_WRITE) &&
+	     likely(f->f_op->write || f->f_op->aio_write || f->f_op->write_iter))
+		f->f_mode |= FMODE_CAN_WRITE;
 
 	f->f_flags &= ~(O_CREAT | O_EXCL | O_NOCTTY | O_TRUNC);
 
@@ -977,6 +988,7 @@ long do_sys_open(int dfd, const char __user *filename, int flags, umode_t mode)
 		} else {
 			fsnotify_open(f);
 			fd_install(fd, f);
+			trace_do_sys_open(tmp->name, flags, mode);
 		}
 	}
 	putname(tmp);

@@ -1926,13 +1926,8 @@ static void serial8250_put_poll_char(struct uart_port *port,
 	wait_for_xmitr(up, BOTH_EMPTY);
 	/*
 	 *	Send the character out.
-	 *	If a LF, also do CR...
 	 */
 	serial_port_out(port, UART_TX, c);
-	if (c == 10) {
-		wait_for_xmitr(up, BOTH_EMPTY);
-		serial_port_out(port, UART_TX, 13);
-	}
 
 	/*
 	 *	Finally, wait for transmitter to become empty
@@ -2338,9 +2333,11 @@ serial8250_do_set_termios(struct uart_port *port, struct ktermios *termios,
 	 * the trigger, or the MCR RTS bit is cleared.  In the case where
 	 * the remote UART is not using CTS auto flow control, we must
 	 * have sufficient FIFO entries for the latency of the remote
-	 * UART to respond.  IOW, at least 32 bytes of FIFO.
+	 * UART to respond.  IOW, at least 32 bytes of FIFO. Also enable
+	 * AFE if hw flow control is supported
 	 */
-	if (up->capabilities & UART_CAP_AFE && port->fifosize >= 32) {
+	if ((up->capabilities & UART_CAP_AFE && (port->fifosize >= 32)) ||
+	    (port->flags & UPF_HARD_FLOW)) {
 		up->mcr &= ~UART_MCR_AFE;
 		if (termios->c_cflag & CRTSCTS)
 			up->mcr |= UART_MCR_AFE;
@@ -2876,7 +2873,8 @@ static void serial8250_console_putchar(struct uart_port *port, int ch)
  *	The console_lock must be held when we get here.
  */
 static void
-serial8250_console_write(struct console *co, const char *s, unsigned int count)
+serial8250_console_write(struct console *co, const char *s, unsigned int count,
+                         unsigned int loglevel)
 {
 	struct uart_8250_port *up = &serial8250_ports[co->index];
 	struct uart_port *port = &up->port;

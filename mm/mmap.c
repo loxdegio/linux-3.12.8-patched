@@ -6,6 +6,8 @@
  * Address space accounting code	<alan@lxorguk.ukuu.org.uk>
  */
 
+#define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
+
 #include <linux/kernel.h>
 #include <linux/slab.h>
 #include <linux/backing-dev.h>
@@ -37,6 +39,7 @@
 #include <linux/sched/sysctl.h>
 #include <linux/notifier.h>
 #include <linux/memory.h>
+#include <linux/printk.h>
 #include <linux/ksm.h>
 
 #include <asm/uaccess.h>
@@ -251,7 +254,7 @@ static struct vm_area_struct *remove_vma(struct vm_area_struct *vma)
 	if (vma->vm_ops && vma->vm_ops->close)
 		vma->vm_ops->close(vma);
 	if (vma->vm_file)
-		fput(vma->vm_file);
+		vma_fput(vma);
 	mpol_put(vma_policy(vma));
 	uksm_remove_vma(vma);
 	kmem_cache_free(vm_area_cachep, vma);
@@ -363,20 +366,20 @@ static int browse_rb(struct rb_root *root)
 		struct vm_area_struct *vma;
 		vma = rb_entry(nd, struct vm_area_struct, vm_rb);
 		if (vma->vm_start < prev) {
-			printk("vm_start %lx prev %lx\n", vma->vm_start, prev);
+			pr_info("vm_start %lx prev %lx\n", vma->vm_start, prev);
 			bug = 1;
 		}
 		if (vma->vm_start < pend) {
-			printk("vm_start %lx pend %lx\n", vma->vm_start, pend);
+			pr_info("vm_start %lx pend %lx\n", vma->vm_start, pend);
 			bug = 1;
 		}
 		if (vma->vm_start > vma->vm_end) {
-			printk("vm_end %lx < vm_start %lx\n",
+			pr_info("vm_end %lx < vm_start %lx\n",
 				vma->vm_end, vma->vm_start);
 			bug = 1;
 		}
 		if (vma->rb_subtree_gap != vma_compute_subtree_gap(vma)) {
-			printk("free gap %lx, correct %lx\n",
+			pr_info("free gap %lx, correct %lx\n",
 			       vma->rb_subtree_gap,
 			       vma_compute_subtree_gap(vma));
 			bug = 1;
@@ -390,7 +393,7 @@ static int browse_rb(struct rb_root *root)
 	for (nd = pn; nd; nd = rb_prev(nd))
 		j++;
 	if (i != j) {
-		printk("backwards %d, forwards %d\n", j, i);
+		pr_info("backwards %d, forwards %d\n", j, i);
 		bug = 1;
 	}
 	return bug ? -1 : i;
@@ -425,17 +428,17 @@ static void validate_mm(struct mm_struct *mm)
 		i++;
 	}
 	if (i != mm->map_count) {
-		printk("map_count %d vm_next %d\n", mm->map_count, i);
+		pr_info("map_count %d vm_next %d\n", mm->map_count, i);
 		bug = 1;
 	}
 	if (highest_address != mm->highest_vm_end) {
-		printk("mm->highest_vm_end %lx, found %lx\n",
+		pr_info("mm->highest_vm_end %lx, found %lx\n",
 		       mm->highest_vm_end, highest_address);
 		bug = 1;
 	}
 	i = browse_rb(&mm->mm_rb);
 	if (i != mm->map_count) {
-		printk("map_count %d rb %d\n", mm->map_count, i);
+		pr_info("map_count %d rb %d\n", mm->map_count, i);
 		bug = 1;
 	}
 	BUG_ON(bug);
@@ -642,11 +645,10 @@ static void vma_link(struct mm_struct *mm, struct vm_area_struct *vma,
 {
 	struct address_space *mapping = NULL;
 
-	if (vma->vm_file)
+	if (vma->vm_file) {
 		mapping = vma->vm_file->f_mapping;
-
-	if (mapping)
 		mutex_lock(&mapping->i_mmap_mutex);
+	}
 
 	__vma_link(mm, vma, prev, rb_link, rb_parent);
 	__vma_link_file(vma);
@@ -871,7 +873,7 @@ again:			remove_next = 1 + (end > next->vm_end);
 	if (remove_next) {
 		if (file) {
 			uprobe_munmap(next, next->vm_start, next->vm_end);
-			fput(file);
+			vma_fput(vma);
 		}
 		if (next->anon_vma)
 			anon_vma_merge(vma, next);
@@ -1661,8 +1663,8 @@ out:
 unmap_and_free_vma:
 	if (vm_flags & VM_DENYWRITE)
 		allow_write_access(file);
+	vma_fput(vma);
 	vma->vm_file = NULL;
-	fput(file);
 
 	/* Undo any partial mapping done by a device driver. */
 	unmap_region(mm, vma, prev, vma->vm_start, vma->vm_end);
@@ -2453,7 +2455,7 @@ static int __split_vma(struct mm_struct * mm, struct vm_area_struct * vma,
 		goto out_free_mpol;
 
 	if (new->vm_file)
-		get_file(new->vm_file);
+		vma_get_file(new);
 
 	if (new->vm_ops && new->vm_ops->open)
 		new->vm_ops->open(new);
@@ -2474,7 +2476,7 @@ static int __split_vma(struct mm_struct * mm, struct vm_area_struct * vma,
 	if (new->vm_ops && new->vm_ops->close)
 		new->vm_ops->close(new);
 	if (new->vm_file)
-		fput(new->vm_file);
+		vma_fput(new);
 	unlink_anon_vmas(new);
  out_free_mpol:
 	mpol_put(vma_policy(new));
@@ -2876,7 +2878,7 @@ struct vm_area_struct *copy_vma(struct vm_area_struct **vmap,
 			if (anon_vma_clone(new_vma, vma))
 				goto out_free_mempol;
 			if (new_vma->vm_file)
-				get_file(new_vma->vm_file);
+				vma_get_file(new_vma);
 			if (new_vma->vm_ops && new_vma->vm_ops->open)
 				new_vma->vm_ops->open(new_vma);
 			vma_link(mm, new_vma, prev, rb_link, rb_parent);
@@ -2909,6 +2911,31 @@ int may_expand_vm(struct mm_struct *mm, unsigned long npages)
 	return 1;
 }
 
+static int special_mapping_fault(struct vm_area_struct *vma,
+				 struct vm_fault *vmf);
+
+/*
+ * Having a close hook prevents vma merging regardless of flags.
+ */
+static void special_mapping_close(struct vm_area_struct *vma)
+{
+}
+
+static const char *special_mapping_name(struct vm_area_struct *vma)
+{
+	return ((struct vm_special_mapping *)vma->vm_private_data)->name;
+}
+
+static const struct vm_operations_struct special_mapping_vmops = {
+	.close = special_mapping_close,
+	.fault = special_mapping_fault,
+	.name = special_mapping_name,
+};
+
+static const struct vm_operations_struct legacy_special_mapping_vmops = {
+	.close = special_mapping_close,
+	.fault = special_mapping_fault,
+};
 
 static int special_mapping_fault(struct vm_area_struct *vma,
 				struct vm_fault *vmf)
@@ -2924,7 +2951,13 @@ static int special_mapping_fault(struct vm_area_struct *vma,
 	 */
 	pgoff = vmf->pgoff - vma->vm_pgoff;
 
-	for (pages = vma->vm_private_data; pgoff && *pages; ++pages)
+	if (vma->vm_ops == &legacy_special_mapping_vmops)
+		pages = vma->vm_private_data;
+	else
+		pages = ((struct vm_special_mapping *)vma->vm_private_data)->
+			pages;
+
+	for (; pgoff && *pages; ++pages)
 		pgoff--;
 
 	if (*pages) {
@@ -2937,30 +2970,11 @@ static int special_mapping_fault(struct vm_area_struct *vma,
 	return VM_FAULT_SIGBUS;
 }
 
-/*
- * Having a close hook prevents vma merging regardless of flags.
- */
-static void special_mapping_close(struct vm_area_struct *vma)
-{
-}
-
-static const struct vm_operations_struct special_mapping_vmops = {
-	.close = special_mapping_close,
-	.fault = special_mapping_fault,
-};
-
-/*
- * Called with mm->mmap_sem held for writing.
- * Insert a new vma covering the given region, with the given flags.
- * Its pages are supplied by the given array of struct page *.
- * The array can be shorter than len >> PAGE_SHIFT if it's null-terminated.
- * The region past the last page supplied will always produce SIGBUS.
- * The array pointer and the pages it points to are assumed to stay alive
- * for as long as this mapping might exist.
- */
-struct vm_area_struct *_install_special_mapping(struct mm_struct *mm,
-			    unsigned long addr, unsigned long len,
-			    unsigned long vm_flags, struct page **pages)
+static struct vm_area_struct *__install_special_mapping(
+	struct mm_struct *mm,
+	unsigned long addr, unsigned long len,
+	unsigned long vm_flags, const struct vm_operations_struct *ops,
+	void *priv)
 {
 	int ret;
 	struct vm_area_struct *vma;
@@ -2977,8 +2991,8 @@ struct vm_area_struct *_install_special_mapping(struct mm_struct *mm,
 	vma->vm_flags = vm_flags | mm->def_flags | VM_DONTEXPAND | VM_SOFTDIRTY;
 	vma->vm_page_prot = vm_get_page_prot(vma->vm_flags);
 
-	vma->vm_ops = &special_mapping_vmops;
-	vma->vm_private_data = pages;
+	vma->vm_ops = ops;
+	vma->vm_private_data = priv;
 
 	ret = insert_vm_struct(mm, vma);
 	if (ret)
@@ -2995,16 +3009,33 @@ out:
 	return ERR_PTR(ret);
 }
 
+/*
+ * Called with mm->mmap_sem held for writing.
+ * Insert a new vma covering the given region, with the given flags.
+ * Its pages are supplied by the given array of struct page *.
+ * The array can be shorter than len >> PAGE_SHIFT if it's null-terminated.
+ * The region past the last page supplied will always produce SIGBUS.
+ * The array pointer and the pages it points to are assumed to stay alive
+ * for as long as this mapping might exist.
+ */
+struct vm_area_struct *_install_special_mapping(
+	struct mm_struct *mm,
+	unsigned long addr, unsigned long len,
+	unsigned long vm_flags, const struct vm_special_mapping *spec)
+{
+	return __install_special_mapping(mm, addr, len, vm_flags,
+					 &special_mapping_vmops, (void *)spec);
+}
+
 int install_special_mapping(struct mm_struct *mm,
 			    unsigned long addr, unsigned long len,
 			    unsigned long vm_flags, struct page **pages)
 {
-	struct vm_area_struct *vma = _install_special_mapping(mm,
-			    addr, len, vm_flags, pages);
+	struct vm_area_struct *vma = __install_special_mapping(
+		mm, addr, len, vm_flags, &legacy_special_mapping_vmops,
+		(void *)pages);
 
-	if (IS_ERR(vma))
-		return PTR_ERR(vma);
-	return 0;
+	return PTR_ERR_OR_ZERO(vma);
 }
 
 static DEFINE_MUTEX(mm_all_locks_mutex);
@@ -3289,7 +3320,7 @@ static struct notifier_block reserve_mem_nb = {
 static int __meminit init_reserve_notifier(void)
 {
 	if (register_hotmemory_notifier(&reserve_mem_nb))
-		printk("Failed registering memory add/remove notifier for admin reserve");
+		pr_err("Failed registering memory add/remove notifier for admin reserve\n");
 
 	return 0;
 }

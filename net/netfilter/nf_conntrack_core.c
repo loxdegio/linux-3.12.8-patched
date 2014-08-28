@@ -313,6 +313,13 @@ destroy_conntrack(struct nf_conntrack *nfct)
 	 */
 	nf_ct_remove_expectations(ct);
 
+#if defined(CONFIG_NETFILTER_XT_MATCH_LAYER7) || defined(CONFIG_NETFILTER_XT_MATCH_LAYER7_MODULE)
+	if(ct->layer7.app_proto)
+		kfree(ct->layer7.app_proto);
+	if(ct->layer7.app_data)
+		kfree(ct->layer7.app_data);
+#endif
+
 	nf_ct_del_from_dying_or_unconfirmed_list(ct);
 
 	NF_CT_STAT_INC(net, delete);
@@ -914,7 +921,7 @@ void nf_conntrack_free(struct nf_conn *ct)
 	nf_ct_ext_destroy(ct);
 	nf_ct_ext_free(ct);
 	kmem_cache_free(net->ct.nf_conntrack_cachep, ct);
-	smp_mb__before_atomic_dec();
+	smp_mb__before_atomic();
 	atomic_dec(&net->ct.count);
 }
 EXPORT_SYMBOL_GPL(nf_conntrack_free);

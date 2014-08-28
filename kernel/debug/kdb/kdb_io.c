@@ -703,14 +703,14 @@ kdb_printit:
 			}
 		}
 		while (c) {
-			c->write(c, kdb_buffer, retlen);
+			c->write(c, kdb_buffer, retlen, 7); /* 7 == KERN_DEBUG */
 			touch_nmi_watchdog();
 			c = c->next;
 		}
 	}
 	if (logging) {
 		saved_loglevel = console_loglevel;
-		console_loglevel = 0;
+		console_loglevel = CONSOLE_LOGLEVEL_SILENT;
 		printk(KERN_INFO "%s", kdb_buffer);
 	}
 
@@ -764,7 +764,7 @@ kdb_printit:
 			}
 		}
 		while (c) {
-			c->write(c, moreprompt, strlen(moreprompt));
+			c->write(c, moreprompt, strlen(moreprompt), 7); /* 7 == KERN_DEBUG */
 			touch_nmi_watchdog();
 			c = c->next;
 		}

@@ -26,7 +26,7 @@ config X86
 	select ARCH_MIGHT_HAVE_PC_SERIO
 	select HAVE_AOUT if X86_32
 	select HAVE_UNSTABLE_SCHED_CLOCK
-	select ARCH_SUPPORTS_NUMA_BALANCING
+	select ARCH_SUPPORTS_NUMA_BALANCING if X86_64
 	select ARCH_SUPPORTS_INT128 if X86_64
 	select ARCH_WANTS_PROT_NUMA_PROT_NONE
 	select HAVE_IDE
@@ -41,7 +41,7 @@ config X86
 	select ARCH_WANT_OPTIONAL_GPIOLIB
 	select ARCH_WANT_FRAME_POINTERS
 	select HAVE_DMA_ATTRS
-	select HAVE_DMA_CONTIGUOUS if !SWIOTLB
+	select HAVE_DMA_CONTIGUOUS
 	select HAVE_KRETPROBES
 	select GENERIC_EARLY_IOREMAP
 	select HAVE_OPTPROBES
@@ -105,7 +105,7 @@ config X86
 	select HAVE_ARCH_SECCOMP_FILTER
 	select BUILDTIME_EXTABLE_SORT
 	select GENERIC_CMOS_UPDATE
-	select HAVE_ARCH_SOFT_DIRTY
+	select HAVE_ARCH_SOFT_DIRTY if X86_64
 	select CLOCKSOURCE_WATCHDOG
 	select GENERIC_CLOCKEVENTS
 	select ARCH_CLOCKSOURCE_DATA
@@ -121,6 +121,7 @@ config X86
 	select MODULES_USE_ELF_RELA if X86_64
 	select CLONE_BACKWARDS if X86_32
 	select ARCH_USE_BUILTIN_BSWAP
+	select ARCH_USE_QUEUE_RWLOCK
 	select OLD_SIGSUSPEND3 if X86_32 || IA32_EMULATION
 	select OLD_SIGACTION if X86_32
 	select COMPAT_OLD_SIGACTION if IA32_EMULATION
@@ -260,6 +261,9 @@ config ARCH_HWEIGHT_CFLAGS
 	default "-fcall-saved-rdi -fcall-saved-rsi -fcall-saved-rdx -fcall-saved-rcx -fcall-saved-r8 -fcall-saved-r9 -fcall-saved-r10 -fcall-saved-r11" if X86_64
 
 config ARCH_SUPPORTS_UPROBES
+	def_bool y
+
+config FIX_EARLYCON_MEM
 	def_bool y
 
 source "init/Kconfig"
@@ -416,7 +420,6 @@ config X86_UV
 
 config X86_GOLDFISH
        bool "Goldfish (Virtual Platform)"
-       depends on X86_32
        depends on X86_EXTENDED_PLATFORM
        ---help---
 	 Enable support for the Goldfish virtual platform used primarily
@@ -785,9 +788,25 @@ config SCHED_SMT
 	depends on X86_HT
 	---help---
 	  SMT scheduler support improves the CPU scheduler's decision making
-	  when dealing with Intel Pentium 4 chips with HyperThreading at a
+	  when dealing with Intel P4/Core 2 chips with HyperThreading at a
 	  cost of slightly increased overhead in some places. If unsure say
 	  N here.
+
+config SMT_NICE
+	bool "SMT (Hyperthreading) aware nice priority and policy support"
+	depends on X86_HT && SCHED_BFS && SCHED_SMT
+	default y
+	---help---
+	  Enabling Hyperthreading on Intel CPUs decreases the effectiveness
+	  of the use of 'nice' levels and different scheduling policies
+	  (e.g. realtime) due to sharing of CPU power between hyperthreads.
+	  SMT nice support makes each logical CPU aware of what is running on
+	  its hyperthread siblings, maintaining appropriate distribution of
+	  CPU according to nice levels and scheduling policies at the expense
+	  of slightly increased overhead.
+
+	  If unsure say Y here.
+
 
 config SCHED_MC
 	def_bool y
@@ -832,6 +851,7 @@ config X86_LOCAL_APIC
 config X86_IO_APIC
 	def_bool y
 	depends on X86_64 || SMP || X86_32_NON_STANDARD || X86_UP_IOAPIC || PCI_MSI
+	select GENERIC_IRQ_LEGACY_ALLOC_HWIRQ
 
 config X86_REROUTE_FOR_BROKEN_BOOT_IRQS
 	bool "Reroute for broken boot IRQs"
@@ -1123,7 +1143,7 @@ config HIGHMEM64G
 endchoice
 
 choice
-	prompt "Memory split"
+	prompt "Memory split" if EXPERT
 	default VMSPLIT_3G
 	depends on X86_32
 	---help---
@@ -1143,17 +1163,17 @@ choice
 	  option alone!
 
 	config VMSPLIT_3G
-		bool "Default 896MB lowmem (3G/1G user/kernel split)"
+		bool "3G/1G user/kernel split"
 	config VMSPLIT_3G_OPT
 		depends on !X86_PAE
-		bool "1GB lowmem (3G/1G user/kernel split)"
+		bool "3G/1G user/kernel split (for full 1G low memory)"
 	config VMSPLIT_2G
-		bool "2GB lowmem (2G/2G user/kernel split)"
+		bool "2G/2G user/kernel split"
 	config VMSPLIT_2G_OPT
 		depends on !X86_PAE
-		bool "2GB lowmem (2G/2G user/kernel split)"
+		bool "2G/2G user/kernel split (for full 2G low memory)"
 	config VMSPLIT_1G
-		bool "3GB lowmem (1G/3G user/kernel split)"
+		bool "1G/3G user/kernel split"
 endchoice
 
 config PAGE_OFFSET
@@ -1669,7 +1689,6 @@ config RELOCATABLE
 config RANDOMIZE_BASE
 	bool "Randomize the address of the kernel image"
 	depends on RELOCATABLE
-	depends on !HIBERNATION
 	default n
 	---help---
 	   Randomizes the physical and virtual address at which the
@@ -2397,12 +2416,9 @@ config X86_DMA_REMAP
 	depends on STA2X11
 
 config IOSF_MBI
-	bool
+	tristate
+	default m
 	depends on PCI
-	---help---
-	  To be selected by modules requiring access to the Intel OnChip System
-	  Fabric (IOSF) Sideband MailBox Interface (MBI). For MBI platforms
-	  enumerable by PCI.
 
 source "net/Kconfig"
 

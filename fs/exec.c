@@ -58,6 +58,8 @@
 #include <linux/compat.h>
 #include <linux/ksm.h>
 
+#include <trace/events/fs.h>
+
 #include <asm/uaccess.h>
 #include <asm/mmu_context.h>
 #include <asm/tlb.h>
@@ -776,6 +778,8 @@ static struct file *do_open_exec(struct filename *name)
 
 	fsnotify_open(file);
 
+	trace_open_exec(name->name);
+
 	err = deny_write_access(file);
 	if (err)
 		goto exit;
@@ -1047,13 +1051,13 @@ EXPORT_SYMBOL_GPL(get_task_comm);
  * so that a new one can be started
  */
 
-void set_task_comm(struct task_struct *tsk, const char *buf)
+void __set_task_comm(struct task_struct *tsk, const char *buf, bool exec)
 {
 	task_lock(tsk);
 	trace_task_rename(tsk, buf);
 	strlcpy(tsk->comm, buf, sizeof(tsk->comm));
 	task_unlock(tsk);
-	perf_event_comm(tsk);
+	perf_event_comm(tsk, exec);
 }
 
 int flush_old_exec(struct linux_binprm * bprm)
@@ -1111,7 +1115,8 @@ void setup_new_exec(struct linux_binprm * bprm)
 	else
 		set_dumpable(current->mm, suid_dumpable);
 
-	set_task_comm(current, kbasename(bprm->filename));
+	perf_event_exec();
+	__set_task_comm(current, kbasename(bprm->filename), true);
 
 	/* Set the new mm task size. We have to do that late because it may
 	 * depend on TIF_32BIT which is only updated in flush_thread() on

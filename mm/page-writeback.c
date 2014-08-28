@@ -70,7 +70,11 @@ static long ratelimit_pages = 32;
 /*
  * Start background writeback (via writeback threads) at this percentage
  */
+#ifdef CONFIG_ZEN_INTERACTIVE
+int dirty_background_ratio = 20;
+#else
 int dirty_background_ratio = 10;
+#endif
 
 /*
  * dirty_background_bytes starts at 0 (disabled) so that it is a function of
@@ -87,7 +91,11 @@ int vm_highmem_is_dirtyable;
 /*
  * The generator of dirty data starts writeback at this percentage
  */
+#ifdef CONFIG_ZEN_INTERACTIVE
+int vm_dirty_ratio = 50;
+#else
 int vm_dirty_ratio = 20;
+#endif
 
 /*
  * vm_dirty_bytes starts at 0 (disabled) so that it is a function of
@@ -154,24 +162,6 @@ static unsigned long writeout_period_time = 0;
  * reflect changes in current writeout rate.
  */
 #define VM_COMPLETIONS_PERIOD_LEN (3*HZ)
-
-/*
- * Work out the current dirty-memory clamping and background writeout
- * thresholds.
- *
- * The main aim here is to lower them aggressively if there is a lot of mapped
- * memory around.  To avoid stressing page reclaim with lots of unreclaimable
- * pages.  It is better to clamp down on writers than to start swapping, and
- * performing lots of scanning.
- *
- * We only allow 1/2 of the currently-unmapped memory to be dirtied.
- *
- * We don't permit the clamping level to fall below 5% - that is getting rather
- * excessive.
- *
- * We make sure that the background writeout level is below the adjusted
- * clamping level.
- */
 
 /*
  * In a memory zone, there is a certain amount of pages we consider
@@ -1623,7 +1613,7 @@ void balance_dirty_pages_ratelimited(struct address_space *mapping)
 	 * 1000+ tasks, all of them start dirtying pages at exactly the same
 	 * time, hence all honoured too large initial task->nr_dirtied_pause.
 	 */
-	p =  &__get_cpu_var(bdp_ratelimits);
+	p =  this_cpu_ptr(&bdp_ratelimits);
 	if (unlikely(current->nr_dirtied >= ratelimit))
 		*p = 0;
 	else if (unlikely(*p >= ratelimit_pages)) {
@@ -1635,7 +1625,7 @@ void balance_dirty_pages_ratelimited(struct address_space *mapping)
 	 * short-lived tasks (eg. gcc invocations in a kernel build) escaping
 	 * the dirty throttling and livelock other long-run dirtiers.
 	 */
-	p = &__get_cpu_var(dirty_throttle_leaks);
+	p = this_cpu_ptr(&dirty_throttle_leaks);
 	if (*p > 0 && current->nr_dirtied < ratelimit) {
 		unsigned long nr_pages_dirtied;
 		nr_pages_dirtied = min(*p, ratelimit - current->nr_dirtied);
@@ -1682,7 +1672,7 @@ void throttle_vm_writeout(gfp_t gfp_mask)
 /*
  * sysctl handler for /proc/sys/vm/dirty_writeback_centisecs
  */
-int dirty_writeback_centisecs_handler(ctl_table *table, int write,
+int dirty_writeback_centisecs_handler(struct ctl_table *table, int write,
 	void __user *buffer, size_t *length, loff_t *ppos)
 {
 	proc_dointvec(table, write, buffer, length, ppos);
