@@ -122,6 +122,7 @@ $(obj)/vdsox32.so.dbg: $(src)/vdsox32.lds $(vobjx32s) FORCE
 vdso32.so-$(VDSO32-y)		+= int80
 vdso32.so-$(CONFIG_COMPAT)	+= syscall
 vdso32.so-$(VDSO32-y)		+= sysenter
+vdso32.so-$(CONFIG_X86_XEN)	+= syscall
 
 vdso32-images			= $(vdso32.so-y:%=vdso32-%.so)
 
