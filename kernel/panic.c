@@ -243,6 +243,8 @@ static const struct tnt tnts[] = {
  *  'I' - Working around severe firmware bug.
  *  'O' - Out-of-tree module has been loaded.
  *  'E' - Unsigned module has been loaded.
+ *  'N' - Unsuported modules loaded.
+ *  'X' - Modules with external support loaded.
  *
  *	The string is overwritten by the next call to print_tainted().
  */

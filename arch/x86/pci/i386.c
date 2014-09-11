@@ -162,6 +162,10 @@ pcibios_align_resource(void *data, const struct resource *res,
 			return start;
 		if (start & 0x300)
 			start = (start + 0x3ff) & ~0x3ff;
+	} else if (res->flags & IORESOURCE_MEM) {
+		/* The low 1MB range is reserved for ISA cards */
+		if (start < BIOS_END)
+			start = BIOS_END;
 	}
 	return start;
 }
@@ -395,12 +399,14 @@ void __init pcibios_resource_survey(void)
 		pcibios_allocate_resources(bus, 1);
 
 	e820_reserve_resources_late();
+#ifndef CONFIG_XEN
 	/*
 	 * Insert the IO APIC resources after PCI initialization has
 	 * occurred to handle IO APICS that are mapped in on a BAR in
 	 * PCI space, but before trying to assign unassigned pci res.
 	 */
 	ioapic_insert_resources();
+#endif
 }
 
 static const struct vm_operations_struct pci_mmap_ops = {

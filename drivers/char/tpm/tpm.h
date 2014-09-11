@@ -315,6 +315,16 @@ struct tpm_cmd_t {
 
 ssize_t	tpm_getcap(struct device *, __be32, cap_t *, const char *);
 
+static inline void *chip_get_private(const struct tpm_chip *chip)
+{
+	return chip->vendor.priv;
+}
+
+static inline void chip_set_private(struct tpm_chip *chip, void *priv)
+{
+	chip->vendor.priv = priv;
+}
+
 ssize_t tpm_transmit(struct tpm_chip *chip, const char *buf,
 		     size_t bufsiz);
 extern int tpm_get_timeouts(struct tpm_chip *);
