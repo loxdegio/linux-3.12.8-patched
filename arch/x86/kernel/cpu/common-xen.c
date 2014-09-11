@@ -8,6 +8,7 @@
 #include <linux/delay.h>
 #include <linux/sched.h>
 #include <linux/init.h>
+#include <linux/kprobes.h>
 #include <linux/kgdb.h>
 #include <linux/smp.h>
 #include <linux/io.h>
@@ -20,6 +21,7 @@
 #include <asm/processor.h>
 #include <asm/debugreg.h>
 #include <asm/sections.h>
+#include <asm/vsyscall.h>
 #include <linux/topology.h>
 #include <linux/cpumask.h>
 #include <asm/pgtable.h>
@@ -1016,6 +1018,70 @@ static void vgetcpu_set_mode(void)
 	else
 		vgetcpu_mode = VGETCPU_LSL;
 }
+
+/* May not be __init: called during resume */
+void syscall32_cpu_init(void)
+{
+	static const struct callback_register cstar = {
+		.type = CALLBACKTYPE_syscall32,
+		.address = (unsigned long)ia32_cstar_target
+	};
+	static const struct callback_register sysenter = {
+		.type = CALLBACKTYPE_sysenter,
+		.address = (unsigned long)ia32_sysenter_target
+	};
+
+	if (HYPERVISOR_callback_op(CALLBACKOP_register, &sysenter) < 0)
+		setup_clear_cpu_cap(X86_FEATURE_SYSENTER32);
+	if (HYPERVISOR_callback_op(CALLBACKOP_register, &cstar) < 0)
+		setup_clear_cpu_cap(X86_FEATURE_SYSCALL32);
+}
+#endif
+
+#ifdef CONFIG_X86_32
+void enable_sep_cpu(void)
+{
+	extern asmlinkage void ia32pv_sysenter_target(void);
+	static struct callback_register sysenter = {
+		.type = CALLBACKTYPE_sysenter,
+		.address = { __KERNEL_CS, (unsigned long)ia32pv_sysenter_target },
+	};
+
+# ifdef TIF_CSTAR
+	if (boot_cpu_has(X86_FEATURE_SYSCALL32)) {
+		extern asmlinkage void ia32pv_cstar_target(void);
+		static const struct callback_register cstar = {
+			.type = CALLBACKTYPE_syscall32,
+			.address = { __KERNEL_CS,
+			             (unsigned long)ia32pv_cstar_target },
+		};
+
+		if (HYPERVISOR_callback_op(CALLBACKOP_register, &cstar) != 0)
+			BUG();
+		return;
+	}
+# endif
+
+	if (!boot_cpu_has(X86_FEATURE_SEP))
+		return;
+
+	if (xen_feature(XENFEAT_supervisor_mode_kernel))
+		sysenter.address.eip = (unsigned long)ia32_sysenter_target;
+
+	switch (HYPERVISOR_callback_op(CALLBACKOP_register, &sysenter)) {
+	case 0:
+		break;
+# if CONFIG_XEN_COMPAT < 0x030200
+	case -ENOSYS:
+		sysenter.type = CALLBACKTYPE_sysenter_deprecated;
+		if (HYPERVISOR_callback_op(CALLBACKOP_register, &sysenter) == 0)
+			break;
+# endif
+	default:
+		setup_clear_cpu_cap(X86_FEATURE_SEP);
+		break;
+	}
+}
 #endif
 
 void __init identify_boot_cpu(void)
@@ -1092,7 +1158,8 @@ __setup("show_msr=", setup_show_msr);
 
 static __init int setup_noclflush(char *arg)
 {
-	setup_clear_cpu_cap(X86_FEATURE_CLFLSH);
+	setup_clear_cpu_cap(X86_FEATURE_CLFLUSH);
+	setup_clear_cpu_cap(X86_FEATURE_CLFLUSHOPT);
 	return 1;
 }
 __setup("noclflush", setup_noclflush);
@@ -1145,6 +1212,10 @@ static __init int setup_disablecpuid(char *arg)
 }
 __setup("clearcpuid=", setup_disablecpuid);
 
+DEFINE_PER_CPU(unsigned long, kernel_stack) =
+	(unsigned long)&init_thread_union - KERNEL_STACK_OFFSET + THREAD_SIZE;
+EXPORT_PER_CPU_SYMBOL(kernel_stack);
+
 #ifdef CONFIG_X86_64
 #ifndef CONFIG_X86_NO_IDT
 struct desc_ptr idt_descr = { NR_VECTORS * 16 - 1, (unsigned long) idt_table };
@@ -1169,10 +1240,6 @@ void xen_switch_pt(void)
 DEFINE_PER_CPU(struct task_struct *, current_task) ____cacheline_aligned =
 	&init_task;
 EXPORT_PER_CPU_SYMBOL(current_task);
-
-DEFINE_PER_CPU(unsigned long, kernel_stack) =
-	(unsigned long)&init_thread_union - KERNEL_STACK_OFFSET + THREAD_SIZE;
-EXPORT_PER_CPU_SYMBOL(kernel_stack);
 
 DEFINE_PER_CPU(char *, irq_stack_ptr) =
 	init_per_cpu_var(irq_stack_union.irq_stack) + IRQ_STACK_SIZE - 64;
@@ -1254,6 +1321,7 @@ int is_debug_stack(unsigned long addr)
 		(addr <= __get_cpu_var(debug_stack_addr) &&
 		 addr > (__get_cpu_var(debug_stack_addr) - DEBUG_STKSZ));
 }
+NOKPROBE_SYMBOL(is_debug_stack);
 
 DEFINE_PER_CPU(u32, debug_idt_ctr);
 
@@ -1262,6 +1330,7 @@ void debug_stack_set_zero(void)
 	this_cpu_inc(debug_idt_ctr);
 	load_current_idt();
 }
+NOKPROBE_SYMBOL(debug_stack_set_zero);
 
 void debug_stack_reset(void)
 {
@@ -1271,6 +1340,7 @@ void debug_stack_reset(void)
 		load_current_idt();
 }
 #endif
+NOKPROBE_SYMBOL(debug_stack_reset);
 
 #else	/* CONFIG_X86_64 */
 

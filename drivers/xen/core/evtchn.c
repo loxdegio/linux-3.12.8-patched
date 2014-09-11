@@ -377,7 +377,14 @@ static DEFINE_PER_CPU(unsigned int, current_l2i);
 #endif
 
 /* NB. Interrupts are disabled on entry. */
-asmlinkage void __irq_entry evtchn_do_upcall(struct pt_regs *regs)
+asmlinkage __visible
+#ifdef CONFIG_PREEMPT
+void
+#define return(x) return
+#else
+bool
+#endif
+__irq_entry evtchn_do_upcall(struct pt_regs *regs)
 {
 	unsigned long       l1, l2;
 	unsigned long       masked_l1, masked_l2;
@@ -1241,11 +1248,15 @@ EXPORT_SYMBOL_GPL(unbind_from_irqhandler);
 static int set_affinity_irq(struct irq_data *data,
 			    const struct cpumask *dest, bool force)
 {
-	unsigned int port = evtchn_from_irq_data(data);
-	unsigned int cpu = cpumask_any(dest);
+	const struct irq_cfg *cfg = irq_data_cfg(data);
+	unsigned int port = evtchn_from_irq_cfg(cfg);
+	unsigned int cpu = cpumask_any_and(dest, cpu_online_mask);
 	struct evtchn_bind_vcpu ebv = { .port = port, .vcpu = cpu };
 	bool masked;
 	int rc;
+
+	BUG_IF_VIRQ_PER_CPU(cfg);
+	BUG_IF_IPI(cfg);
 
 	if (!VALID_EVTCHN(port))
 		return -ENXIO;

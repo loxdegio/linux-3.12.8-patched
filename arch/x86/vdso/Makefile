@@ -21,6 +21,7 @@ vdso_img-$(VDSOX32-y)		+= x32
 vdso_img-$(VDSO32-y)		+= 32-int80
 vdso_img-$(CONFIG_COMPAT)	+= 32-syscall
 vdso_img-$(VDSO32-y)		+= 32-sysenter
+vdso_img-$(CONFIG_X86_XEN)	+= 32-syscall
 
 obj-$(VDSO32-y)			+= vdso32-setup.o
 

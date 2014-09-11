@@ -61,7 +61,7 @@ void arch_trigger_all_cpu_backtrace(bool include_self)
 #ifndef CONFIG_XEN
 		apic->send_IPI_mask(to_cpumask(backtrace_mask), NMI_VECTOR);
 #else /* this works even without CONFIG_X86_LOCAL_APIC */
-		xen_send_IPI_all(NMI_VECTOR);
+		xen_send_IPI_mask(to_cpumask(backtrace_mask), NMI_VECTOR);
 #endif
 	}
 

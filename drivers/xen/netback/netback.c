@@ -77,51 +77,57 @@ static netif_rx_response_t *make_rx_response(netif_t *netif,
 					     u16      size,
 					     u16      flags);
 
-static void net_tx_action(unsigned long unused);
-static DECLARE_TASKLET(net_tx_tasklet, net_tx_action, 0);
-
-static void net_rx_action(unsigned long unused);
-static DECLARE_TASKLET(net_rx_tasklet, net_rx_action, 0);
-
-static struct timer_list net_timer;
-static struct timer_list netbk_tx_pending_timer;
-
-#define MAX_PENDING_REQS 256
+static void net_tx_action(unsigned long group);
+static void net_rx_action(unsigned long group);
 
 /* Discriminate from any valid pending_idx value. */
 #define INVALID_PENDING_IDX 0xffff
 
-static struct sk_buff_head rx_queue;
-
-static struct page **mmap_pages;
-static inline unsigned long idx_to_pfn(u16 idx)
+static inline unsigned long idx_to_pfn(struct xen_netbk *netbk, u16 idx)
 {
-	return page_to_pfn(mmap_pages[idx]);
+	return page_to_pfn(netbk->tx.mmap_pages[idx]);
 }
 
-static inline unsigned long idx_to_kaddr(u16 idx)
+static inline unsigned long idx_to_kaddr(struct xen_netbk *netbk, u16 idx)
 {
-	return (unsigned long)pfn_to_kaddr(idx_to_pfn(idx));
+	return (unsigned long)pfn_to_kaddr(idx_to_pfn(netbk, idx));
 }
 
 /* extra field used in struct page */
-static inline void netif_set_page_index(struct page *pg, unsigned int index)
+union page_ext {
+	struct {
+#if BITS_PER_LONG < 64
+#define GROUP_WIDTH (BITS_PER_LONG - CONFIG_XEN_NETDEV_TX_SHIFT)
+#define MAX_GROUPS ((1U << GROUP_WIDTH) - 1)
+		unsigned int grp:GROUP_WIDTH;
+		unsigned int idx:CONFIG_XEN_NETDEV_TX_SHIFT;
+#else
+#define MAX_GROUPS UINT_MAX
+		unsigned int grp, idx;
+#endif
+	} e;
+	void *mapping;
+};
+
+static inline void netif_set_page_ext(struct page *pg, unsigned int group,
+				      unsigned int idx)
 {
-	*(unsigned long *)&pg->mapping = index;
+	union page_ext ext = { .e = { .grp = group + 1, .idx = idx } };
+
+	BUILD_BUG_ON(sizeof(ext) > sizeof(ext.mapping));
+	pg->mapping = ext.mapping;
 }
 
-static inline int netif_page_index(struct page *pg)
-{
-	unsigned long idx = (unsigned long)pg->mapping;
-
-	if (!PageForeign(pg))
-		return -1;
-
-	if ((idx >= MAX_PENDING_REQS) || (mmap_pages[idx] != pg))
-		return -1;
-
-	return idx;
-}
+#define netif_get_page_ext(pg, netbk, index) do { \
+	const struct page *pg__ = (pg); \
+	union page_ext ext__ = { .mapping = pg__->mapping }; \
+	unsigned int grp__ = ext__.e.grp - 1; \
+	unsigned int idx__ = index = ext__.e.idx; \
+	netbk = grp__ < netbk_nr_groups ? &xen_netbk[grp__] : NULL; \
+	if (!PageForeign(pg__) || idx__ >= MAX_PENDING_REQS || \
+	    (netbk && netbk->tx.mmap_pages[idx__] != pg__)) \
+		netbk = NULL; \
+} while (0)
 
 static u16 frag_get_pending_idx(const skb_frag_t *frag)
 {

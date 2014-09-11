@@ -153,7 +153,7 @@ static void __init copy_bootdata(char *real_mode_data)
 
 #include <xen/interface/memory.h>
 
-asmlinkage void __init x86_64_start_kernel(char * real_mode_data)
+asmlinkage __visible void __init x86_64_start_kernel(char * real_mode_data)
 {
 	/*
 	 * Build-time sanity checks on the kernel image and module
@@ -191,7 +191,7 @@ asmlinkage void __init x86_64_start_kernel(char * real_mode_data)
 	load_ucode_bsp();
 #endif
 
-	if (console_loglevel == 10)
+	if (console_loglevel >= CONSOLE_LOGLEVEL_DEBUG)
 		early_printk("Kernel alive\n");
 
 #ifndef CONFIG_XEN

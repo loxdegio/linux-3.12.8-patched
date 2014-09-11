@@ -521,8 +521,8 @@ static void init_amd(struct cpuinfo_x86 *c)
 {
 #ifndef CONFIG_XEN
 	u32 dummy;
-#endif
 	unsigned long long value;
+#endif
 
 #ifdef CONFIG_SMP
 	/*

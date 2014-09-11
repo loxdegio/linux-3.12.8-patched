@@ -31,7 +31,11 @@
 #include <xen/interface/vcpu.h>
 
 #ifdef CONFIG_X86_64
-DEFINE_VVAR(volatile unsigned long, jiffies) = INITIAL_JIFFIES;
+#include <asm/pvclock.h>
+#include <asm/vgtod.h>
+
+struct pvclock_vsyscall_time_info *__read_mostly pvclock_vsyscall_time;
+__visible DEFINE_VVAR(volatile unsigned long, jiffies) = INITIAL_JIFFIES;
 #endif
 
 #define XEN_SHIFT 22
