@@ -4682,6 +4682,11 @@ static void evict_inode_truncate_pages(struct inode *inode)
 		clear_bit(EXTENT_FLAG_LOGGING, &em->flags);
 		remove_extent_mapping(map_tree, em);
 		free_extent_map(em);
+		if (need_resched()) {
+			write_unlock(&map_tree->lock);
+			cond_resched();
+			write_lock(&map_tree->lock);
+		}
 	}
 	write_unlock(&map_tree->lock);
 
@@ -4704,6 +4709,7 @@ static void evict_inode_truncate_pages(struct inode *inode)
 				 &cached_state, GFP_NOFS);
 		free_extent_state(state);
 
+		cond_resched();
 		spin_lock(&io_tree->lock);
 	}
 	spin_unlock(&io_tree->lock);
@@ -5614,6 +5620,13 @@ static struct inode *btrfs_new_inode(struct btrfs_trans_handle *trans,
 	}
 
 	/*
+	 * O_TMPFILE, set link count to 0, so that after this point,
+	 * we fill in an inode item with the correct link count.
+	 */
+	if (!name)
+		set_nlink(inode, 0);
+
+	/*
 	 * we have to initialize this early, so we can reclaim the inode
 	 * number if we fail afterwards in this function.
 	 */
@@ -6283,6 +6296,8 @@ next:
 			goto not_found;
 		if (start + len <= found_key.offset)
 			goto not_found;
+		if (start > found_key.offset)
+			goto next;
 		em->start = start;
 		em->orig_start = start;
 		em->len = found_key.offset - start;
@@ -7543,7 +7558,8 @@ static ssize_t btrfs_direct_IO(int rw, struct kiocb *iocb,
 	count = iov_iter_count(iter);
 	if (test_bit(BTRFS_INODE_HAS_ASYNC_EXTENT,
 		     &BTRFS_I(inode)->runtime_flags))
-		filemap_fdatawrite_range(inode->i_mapping, offset, count);
+		filemap_fdatawrite_range(inode->i_mapping, offset,
+					 offset + count - 1);
 
 	if (rw & WRITE) {
 		/*
@@ -8980,6 +8996,14 @@ static int btrfs_tmpfile(struct inode *dir, struct dentry *dentry, umode_t mode)
 	if (ret)
 		goto out;
 
+	/*
+	 * We set number of links to 0 in btrfs_new_inode(), and here we set
+	 * it to 1 because d_tmpfile() will issue a warning if the count is 0,
+	 * through:
+	 *
+	 *    d_tmpfile() -> inode_dec_link_count() -> drop_nlink()
+	 */
+	set_nlink(inode, 1);
 	d_tmpfile(dentry, inode);
 	mark_inode_dirty(inode);
 

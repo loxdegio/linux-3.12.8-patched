@@ -705,7 +705,7 @@ static int scsi_probe_lun(struct scsi_device *sdev, unsigned char *inq_result,
 	 * and displaying garbage for the Vendor, Product, or Revision
 	 * strings.
 	 */
-	if (sdev->inquiry_len < 36) {
+	if (sdev->inquiry_len < 36 && printk_ratelimit()) {
 		printk(KERN_INFO "scsi scan: INQUIRY result too short (%d),"
 				" using 36\n", sdev->inquiry_len);
 		sdev->inquiry_len = 36;
@@ -922,6 +922,12 @@ static int scsi_add_lun(struct scsi_device *sdev, unsigned char *inq_result,
 	if (*bflags & BLIST_USE_10_BYTE_MS)
 		sdev->use_10_for_ms = 1;
 
+	/* some devices don't like REPORT SUPPORTED OPERATION CODES
+	 * and will simply timeout causing sd_mod init to take a very
+	 * very long time */
+	if (*bflags & BLIST_NO_RSOC)
+		sdev->no_report_opcodes = 1;
+
 	/* set the device running here so that slave configure
 	 * may do I/O */
 	ret = scsi_device_set_state(sdev, SDEV_RUNNING);
@@ -950,7 +956,9 @@ static int scsi_add_lun(struct scsi_device *sdev, unsigned char *inq_result,
 
 	sdev->eh_timeout = SCSI_DEFAULT_EH_TIMEOUT;
 
-	if (*bflags & BLIST_SKIP_VPD_PAGES)
+	if (*bflags & BLIST_TRY_VPD_PAGES)
+		sdev->try_vpd_pages = 1;
+	else if (*bflags & BLIST_SKIP_VPD_PAGES)
 		sdev->skip_vpd_pages = 1;
 
 	transport_configure_device(&sdev->sdev_gendev);
@@ -1237,6 +1245,12 @@ static void scsi_sequential_lun_scan(struct scsi_target *starget,
 	 */
 	if (scsi_level < SCSI_3 && !(bflags & BLIST_LARGELUN))
 		max_dev_lun = min(8U, max_dev_lun);
+
+	/*
+	 * Stop scanning at 255 unless BLIST_SCSI3LUN
+	 */
+	if (!(bflags & BLIST_SCSI3LUN))
+		max_dev_lun = min(256U, max_dev_lun);
 
 	/*
 	 * We have already scanned LUN 0, so start at LUN 1. Keep scanning

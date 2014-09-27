@@ -224,6 +224,10 @@ static const struct tnt tnts[] = {
 	{ TAINT_FIRMWARE_WORKAROUND,	'I', ' ' },
 	{ TAINT_OOT_MODULE,		'O', ' ' },
 	{ TAINT_UNSIGNED_MODULE,	'E', ' ' },
+#ifdef CONFIG_SUSE_KERNEL_SUPPORTED
+	{ TAINT_NO_SUPPORT,		'N', ' ' },
+	{ TAINT_EXTERNAL_SUPPORT,	'X', ' ' },
+#endif
 };
 
 /**

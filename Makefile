@@ -1,6 +1,6 @@
 VERSION = 3
 PATCHLEVEL = 16
-SUBLEVEL = 2
+SUBLEVEL = 3
 EXTRAVERSION = -geek
 NAME = Doctor Commando And The Commandos Of The Universe
 
@@ -391,7 +391,7 @@ CHECK		= sparse
 CHECKFLAGS     := -D__linux__ -Dlinux -D__STDC__ -Dunix -D__unix__ \
 		  -Wbitwise -Wno-return-void $(CF)
 KMSG_CHECK	= $(srctree)/scripts/kmsg-doc
-OFLAGS			= -g0 -march=native -O2 
+OFLAGS			= -fno-omit-frame-pointer -g0 -march=native -O2
 
 CFLAGS_MODULE   = $(OFLAGS)
 AFLAGS_MODULE   = $(OFLAGS)
