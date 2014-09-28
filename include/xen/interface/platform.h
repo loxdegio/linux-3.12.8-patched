@@ -114,112 +114,10 @@ struct xenpf_platform_quirk {
 typedef struct xenpf_platform_quirk xenpf_platform_quirk_t;
 DEFINE_XEN_GUEST_HANDLE(xenpf_platform_quirk_t);
 
-#define XENPF_efi_runtime_call    49
-#define XEN_EFI_get_time                      1
-#define XEN_EFI_set_time                      2
-#define XEN_EFI_get_wakeup_time               3
-#define XEN_EFI_set_wakeup_time               4
-#define XEN_EFI_get_next_high_monotonic_count 5
-#define XEN_EFI_get_variable                  6
-#define XEN_EFI_set_variable                  7
-#define XEN_EFI_get_next_variable_name        8
-#define XEN_EFI_query_variable_info           9
-#define XEN_EFI_query_capsule_capabilities   10
-#define XEN_EFI_update_capsule               11
-struct xenpf_efi_runtime_call {
-    uint32_t function;
-    /*
-     * This field is generally used for per sub-function flags (defined
-     * below), except for the XEN_EFI_get_next_high_monotonic_count case,
-     * where it holds the single returned value.
-     */
-    uint32_t misc;
-    unsigned long status;
-    union {
-#define XEN_EFI_GET_TIME_SET_CLEARS_NS 0x00000001
-        struct {
-            struct xenpf_efi_time {
-                uint16_t year;
-                uint8_t month;
-                uint8_t day;
-                uint8_t hour;
-                uint8_t min;
-                uint8_t sec;
-                uint32_t ns;
-                int16_t tz;
-                uint8_t daylight;
-            } time;
-            uint32_t resolution;
-            uint32_t accuracy;
-        } get_time;
-
-        struct xenpf_efi_time set_time;
-
-#define XEN_EFI_GET_WAKEUP_TIME_ENABLED 0x00000001
-#define XEN_EFI_GET_WAKEUP_TIME_PENDING 0x00000002
-        struct xenpf_efi_time get_wakeup_time;
-
-#define XEN_EFI_SET_WAKEUP_TIME_ENABLE      0x00000001
-#define XEN_EFI_SET_WAKEUP_TIME_ENABLE_ONLY 0x00000002
-        struct xenpf_efi_time set_wakeup_time;
-
-#define XEN_EFI_VARIABLE_NON_VOLATILE       0x00000001
-#define XEN_EFI_VARIABLE_BOOTSERVICE_ACCESS 0x00000002
-#define XEN_EFI_VARIABLE_RUNTIME_ACCESS     0x00000004
-        struct {
-            XEN_GUEST_HANDLE(void) name;  /* UCS-2/UTF-16 string */
-            unsigned long size;
-            XEN_GUEST_HANDLE(void) data;
-            struct xenpf_efi_guid {
-                uint32_t data1;
-                uint16_t data2;
-                uint16_t data3;
-                uint8_t data4[8];
-            } vendor_guid;
-        } get_variable, set_variable;
-
-        struct {
-            unsigned long size;
-            XEN_GUEST_HANDLE(void) name;  /* UCS-2/UTF-16 string */
-            struct xenpf_efi_guid vendor_guid;
-        } get_next_variable_name;
-
-#define XEN_EFI_VARINFO_BOOT_SNAPSHOT       0x00000001
-        struct {
-            uint32_t attr;
-            uint64_t max_store_size;
-            uint64_t remain_store_size;
-            uint64_t max_size;
-        } query_variable_info;
-
-        struct {
-            XEN_GUEST_HANDLE(void) capsule_header_array;
-            unsigned long capsule_count;
-            uint64_t max_capsule_size;
-            unsigned int reset_type;
-        } query_capsule_capabilities;
-
-        struct {
-            XEN_GUEST_HANDLE(void) capsule_header_array;
-            unsigned long capsule_count;
-            uint64_t sg_list; /* machine address */
-        } update_capsule;
-    } u;
-};
-typedef struct xenpf_efi_runtime_call xenpf_efi_runtime_call_t;
-DEFINE_XEN_GUEST_HANDLE(xenpf_efi_runtime_call_t);
-
 #define XENPF_firmware_info       50
 #define XEN_FW_DISK_INFO          1 /* from int 13 AH=08/41/48 */
 #define XEN_FW_DISK_MBR_SIGNATURE 2 /* from MBR offset 0x1b8 */
 #define XEN_FW_VBEDDC_INFO        3 /* from int 10 AX=4f15 */
-#define XEN_FW_EFI_INFO           4 /* from EFI */
-#define  XEN_FW_EFI_VERSION        0
-#define  XEN_FW_EFI_CONFIG_TABLE   1
-#define  XEN_FW_EFI_VENDOR         2
-#define  XEN_FW_EFI_MEM_INFO       3
-#define  XEN_FW_EFI_RT_VERSION     4
-#define  XEN_FW_EFI_PCI_ROM        5
 #define XEN_FW_KBD_SHIFT_FLAGS    5 /* Int16, Fn02: Get keyboard shift flags. */
 struct xenpf_firmware_info {
 	/* IN variables. */
@@ -252,59 +150,21 @@ struct xenpf_firmware_info {
 			XEN_GUEST_HANDLE(uint8) edid;
 		} vbeddc_info; /* XEN_FW_VBEDDC_INFO */
 
-		union xenpf_efi_info {
-			uint32_t version;
-			struct {
-				uint64_t addr;            /* EFI_CONFIGURATION_TABLE */
-				uint32_t nent;
-			} cfg;
-			struct {
-				uint32_t revision;
-				uint32_t bufsz;           /* input, in bytes */
-				XEN_GUEST_HANDLE(void) name; /* UCS-2/UTF-16 string */
-			} vendor;
-			struct {
-				uint64_t addr;
-				uint64_t size;
-				uint64_t attr;
-				uint32_t type;
-			} mem;
-			struct {
-				/* IN variables */
-				uint16_t segment;
-				uint8_t bus;
-				uint8_t devfn;
-				uint16_t vendor;
-				uint16_t devid;
-				/* OUT variables */
-				uint64_t address;
-				xen_ulong_t size;
-			} pci_rom;
-		} efi_info; /* XEN_FW_EFI_INFO */
-
-		/* Int16, Fn02: Get keyboard shift flags. */
 		uint8_t kbd_shift_flags; /* XEN_FW_KBD_SHIFT_FLAGS */
 	} u;
 };
-typedef struct xenpf_firmware_info xenpf_firmware_info_t;
-DEFINE_XEN_GUEST_HANDLE(xenpf_firmware_info_t);
+DEFINE_GUEST_HANDLE_STRUCT(xenpf_firmware_info_t);
 
 #define XENPF_enter_acpi_sleep    51
 struct xenpf_enter_acpi_sleep {
 	/* IN variables */
-#if !defined(CONFIG_PARAVIRT_XEN) && __XEN_INTERFACE_VERSION__ < 0x00040300
-	uint16_t pm1a_cnt_val;      /* PM1a control value. */
-	uint16_t pm1b_cnt_val;      /* PM1b control value. */
-#else
 	uint16_t val_a;             /* PM1a control / sleep type A. */
 	uint16_t val_b;             /* PM1b control / sleep type B. */
-#endif
 	uint32_t sleep_state;       /* Which state to enter (Sn). */
 #define XENPF_ACPI_SLEEP_EXTENDED 0x00000001
 	uint32_t flags;             /* XENPF_ACPI_SLEEP_*. */
 };
-typedef struct xenpf_enter_acpi_sleep xenpf_enter_acpi_sleep_t;
-DEFINE_XEN_GUEST_HANDLE(xenpf_enter_acpi_sleep_t);
+DEFINE_GUEST_HANDLE_STRUCT(xenpf_enter_acpi_sleep_t);
 
 #define XENPF_change_freq         52
 struct xenpf_change_freq {
@@ -559,7 +419,6 @@ struct xen_platform_op {
 		struct xenpf_read_memtype      read_memtype;
 		struct xenpf_microcode_update  microcode;
 		struct xenpf_platform_quirk    platform_quirk;
-		struct xenpf_efi_runtime_call  efi_runtime_call;
 		struct xenpf_firmware_info     firmware_info;
 		struct xenpf_enter_acpi_sleep  enter_acpi_sleep;
 		struct xenpf_change_freq       change_freq;

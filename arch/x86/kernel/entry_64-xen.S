@@ -204,6 +204,7 @@ NMI_MASK = 0x80000000
  */
 	.macro XCPT_FRAME start=1 offset=0
 	INTR_FRAME \start, RIP+\offset-ORIG_RAX
+	/*CFI_REL_OFFSET orig_rax, ORIG_RAX-ORIG_RAX*/
 	.endm
 
 /*
@@ -317,21 +318,21 @@ NMI_MASK = 0x80000000
 ENTRY(save_paranoid)
 	XCPT_FRAME offset=(ORIG_RAX-R15+8)
 	cld
-	movq %rdi, RDI+8(%rsp)
-	movq %rsi, RSI+8(%rsp)
+	movq_cfi rdi, RDI+8
+	movq_cfi rsi, RSI+8
 	movq_cfi rdx, RDX+8
 	movq_cfi rcx, RCX+8
 	movq_cfi rax, RAX+8
-	movq %r8, R8+8(%rsp)
-	movq %r9, R9+8(%rsp)
-	movq %r10, R10+8(%rsp)
-	movq %r11, R11+8(%rsp)
+	movq_cfi r8, R8+8
+	movq_cfi r9, R9+8
+	movq_cfi r10, R10+8
+	movq_cfi r11, R11+8
 	movq_cfi rbx, RBX+8
-	movq %rbp, RBP+8(%rsp)
-	movq %r12, R12+8(%rsp)
-	movq %r13, R13+8(%rsp)
-	movq %r14, R14+8(%rsp)
-	movq %r15, R15+8(%rsp)
+	movq_cfi rbp, RBP+8
+	movq_cfi r12, R12+8
+	movq_cfi r13, R13+8
+	movq_cfi r14, R14+8
+	movq_cfi r15, R15+8
 	movl $1,%ebx
 	movl $MSR_GS_BASE,%ecx
 	rdmsr
@@ -1182,21 +1183,21 @@ ENTRY(error_entry)
 	XCPT_FRAME start=2 offset=(ORIG_RAX-R15+8)
 	/* oldrax contains error code */
 	cld
-	movq %rdi, RDI+8(%rsp)
-	movq %rsi, RSI+8(%rsp)
-	movq %rdx, RDX+8(%rsp)
-	movq %rcx, RCX+8(%rsp)
-	movq %rax, RAX+8(%rsp)
-	movq  %r8,  R8+8(%rsp)
-	movq  %r9,  R9+8(%rsp)
-	movq %r10, R10+8(%rsp)
-	movq %r11, R11+8(%rsp)
+	movq_cfi rdi, RDI+8
+	movq_cfi rsi, RSI+8
+	movq_cfi rdx, RDX+8
+	movq_cfi rcx, RCX+8
+	movq_cfi rax, RAX+8
+	movq_cfi  r8,  R8+8
+	movq_cfi  r9,  R9+8
+	movq_cfi r10, R10+8
+	movq_cfi r11, R11+8
 	movq_cfi rbx, RBX+8
-	movq %rbp, RBP+8(%rsp)
-	movq %r12, R12+8(%rsp)
-	movq %r13, R13+8(%rsp)
-	movq %r14, R14+8(%rsp)
-	movq %r15, R15+8(%rsp)
+	movq_cfi rbp, RBP+8
+	movq_cfi r12, R12+8
+	movq_cfi r13, R13+8
+	movq_cfi r14, R14+8
+	movq_cfi r15, R15+8
 #ifndef CONFIG_XEN
 	xorl %ebx,%ebx
 	testl $3,CS+8(%rsp)
@@ -1217,7 +1218,6 @@ error_sti:
  * compat mode. Check for these here too.
  */
 error_kernelspace:
-	CFI_REL_OFFSET rcx, RCX+8
 	incl %ebx
 	leaq native_irq_return_iret(%rip),%rcx
 	cmpq %rcx,RIP+8(%rsp)

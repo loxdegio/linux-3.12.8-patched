@@ -2124,9 +2124,6 @@ static struct pci_driver cp_driver = {
 
 static int __init cp_init (void)
 {
-	if (xen_pvonhvm_unplugged_nics)
-		return -EBUSY;
-
 #ifdef MODULE
 	pr_info("%s", version);
 #endif

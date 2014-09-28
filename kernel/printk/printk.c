@@ -45,8 +45,6 @@
 #include <linux/poll.h>
 #include <linux/irq_work.h>
 #include <linux/utsname.h>
-#include <linux/jhash.h>
-#include <linux/device.h>
 
 #include <asm/uaccess.h>
 

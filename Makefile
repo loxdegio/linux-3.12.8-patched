@@ -391,7 +391,10 @@ CHECK		= sparse
 CHECKFLAGS     := -D__linux__ -Dlinux -D__STDC__ -Dunix -D__unix__ \
 		  -Wbitwise -Wno-return-void $(CF)
 KMSG_CHECK	= $(srctree)/scripts/kmsg-doc
-OFLAGS			= -fno-omit-frame-pointer -g0 -march=native -O2
+OFLAGS			= -g0 -march=native -O2
+ifeq($(uname -m),"x86_64")
+OFLAGS			= $(OFLAGS) -fno-omit-frame-pointer
+endif
 
 CFLAGS_MODULE   = $(OFLAGS)
 AFLAGS_MODULE   = $(OFLAGS)

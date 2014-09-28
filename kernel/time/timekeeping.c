@@ -520,10 +520,6 @@ int do_settimeofday(const struct timespec *tv)
 
 	timekeeping_update(tk, TK_CLEAR_NTP | TK_MIRROR | TK_CLOCK_WAS_SET);
 
-#ifdef CONFIG_XEN_PRIVILEGED_GUEST
-	xen_update_wallclock(tv);
-#endif
-
 	write_seqcount_end(&timekeeper_seq);
 	raw_spin_unlock_irqrestore(&timekeeper_lock, flags);
 

@@ -329,10 +329,8 @@ struct apic {
 	void (*setup_portio_remap)(void);
 	int (*check_phys_apicid_present)(int phys_apicid);
 	void (*enable_apic_mode)(void);
-#endif
 	int (*phys_pkg_id)(int cpuid_apic, int index_msb);
 
-#ifndef CONFIG_XEN
 	/*
 	 * When one of the next two hooks returns 1 the apic
 	 * is switched to this. Essentially they are additional

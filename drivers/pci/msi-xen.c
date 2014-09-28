@@ -553,11 +553,8 @@ static int msi_capability_init(struct pci_dev *dev, int nvec)
 {
 	struct msi_dev_list *dev_entry = get_msi_dev_pirq_list(dev);
 	int pirq;
-	u16 control;
 
 	msi_set_enable(dev, 0);	/* Disable MSI during set up */
-
-	pci_read_config_word(dev, dev->msi_cap + PCI_MSI_FLAGS, &control);
 
 	pirq = msi_map_vector(dev, nvec, 0, dev_entry->owner);
 	if (pirq < 0)
@@ -595,8 +592,6 @@ static int msix_capability_init(struct pci_dev *dev,
 
 	if (!msi_dev_entry)
 		return -ENOMEM;
-
-	msix_set_enable(dev, 0);/* Ensure msix is disabled as I set it up */
 
 	pci_read_config_word(dev, dev->msix_cap + PCI_MSIX_FLAGS, &control);
 

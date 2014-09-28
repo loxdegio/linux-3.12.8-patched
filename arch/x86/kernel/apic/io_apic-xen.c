@@ -398,18 +398,24 @@ static struct IO_APIC_route_entry ioapic_read_entry(int apic, int pin)
 	return eu.entry;
 }
 
+#ifndef CONFIG_XEN
 /*
  * When we write a new IO APIC routing entry, we need to write the high
  * word first! If the mask bit in the low word is clear, we will enable
  * the interrupt, and we need to make sure the entry is fully populated
  * before that happens.
  */
+#else
+/* On Xen we don't need to write the high half at all. */
+#endif
 static void __ioapic_write_entry(int apic, int pin, struct IO_APIC_route_entry e)
 {
 	union entry_union eu = {{0, 0}};
 
 	eu.entry = e;
+#ifndef CONFIG_XEN
 	io_apic_write(apic, 0x11 + 2*pin, eu.w2);
+#endif
 	io_apic_write(apic, 0x10 + 2*pin, eu.w1);
 }
 
@@ -1371,8 +1377,7 @@ static void setup_ioapic_irq(unsigned int irq, struct irq_cfg *cfg,
 	 * PHYSDEVOP_setup_gsi more than once (perhaps even at all).
 	 */
 	if (irq >= legacy_pic->nr_legacy_irqs
-	    || test_bit(attr->ioapic_pin,
-			ioapics[attr->ioapic].pin_programmed)) {
+	    || mp_pin_info(attr->ioapic, attr->ioapic_pin)->set) {
 		struct physdev_setup_gsi setup_gsi = {
 			.gsi = irq,
 			.triggering = attr->trigger,

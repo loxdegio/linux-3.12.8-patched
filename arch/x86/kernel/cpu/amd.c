@@ -519,10 +519,8 @@ static bool cpu_has_amd_erratum(struct cpuinfo_x86 *cpu, const int *erratum);
 
 static void init_amd(struct cpuinfo_x86 *c)
 {
-#ifndef CONFIG_XEN
 	u32 dummy;
 	unsigned long long value;
-#endif
 
 #ifdef CONFIG_SMP
 	/*
@@ -560,27 +558,21 @@ static void init_amd(struct cpuinfo_x86 *c)
 		 */
 		if (c->x86_model < 0x14 && cpu_has(c, X86_FEATURE_LAHF_LM)) {
 			clear_cpu_cap(c, X86_FEATURE_LAHF_LM);
-#ifndef CONFIG_XEN
 			if (!rdmsrl_amd_safe(0xc001100d, &value)) {
 				value &= ~(1ULL << 32);
 				wrmsrl_amd_safe(0xc001100d, value);
 			}
-#else
-			pr_warning("Long-mode LAHF feature wrongly enabled -"
-				   "hypervisor update needed\n");
-#endif
 		}
 
 	}
 	if (c->x86 >= 0x10)
 		set_cpu_cap(c, X86_FEATURE_REP_GOOD);
 
-#ifndef CONFIG_XEN
 	/* get apicid instead of initial apic id from cpuid */
 	c->apicid = hard_smp_processor_id();
-#endif
 #else
 
+#ifndef CONFIG_XEN
 	/*
 	 *	FIXME: We should handle the K5 here. Set up the write
 	 *	range and also turn on MSR 83 bits 4 and 31 (write alloc,
@@ -618,7 +610,6 @@ static void init_amd(struct cpuinfo_x86 *c)
 		}
 	}
 
-#ifndef CONFIG_XEN
 	/* re-enable TopologyExtensions if switched off by BIOS */
 	if ((c->x86 == 0x15) &&
 	    (c->x86_model >= 0x10) && (c->x86_model <= 0x1f) &&
@@ -645,7 +636,6 @@ static void init_amd(struct cpuinfo_x86 *c)
 			wrmsrl_safe(0xc0011021, value);
 		}
 	}
-#endif
 
 	cpu_detect_cache_sizes(c);
 
@@ -678,7 +668,6 @@ static void init_amd(struct cpuinfo_x86 *c)
 		fam10h_check_enable_mmcfg();
 	}
 
-#ifndef CONFIG_XEN
 	if (c == &boot_cpu_data && c->x86 >= 0xf) {
 		unsigned long long tseg;
 
@@ -696,7 +685,6 @@ static void init_amd(struct cpuinfo_x86 *c)
 		}
 	}
 #endif
-#endif
 
 	/*
 	 * Family 0x12 and above processors have APIC timer
@@ -705,7 +693,6 @@ static void init_amd(struct cpuinfo_x86 *c)
 	if (c->x86 > 0x11)
 		set_cpu_cap(c, X86_FEATURE_ARAT);
 
-#ifndef CONFIG_XEN
 	if (c->x86 == 0x10) {
 		/*
 		 * Disable GART TLB Walk Errors on Fam10h. We do this here
@@ -734,6 +721,7 @@ static void init_amd(struct cpuinfo_x86 *c)
 			set_cpu_bug(c, X86_BUG_AMD_TLB_MMATCH);
 	}
 
+#ifndef CONFIG_XEN
 	if (cpu_has_amd_erratum(c, amd_erratum_400))
 		set_cpu_bug(c, X86_BUG_AMD_APIC_C1E);
 

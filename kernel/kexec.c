@@ -757,16 +757,16 @@ static struct page *kimage_alloc_page(struct kimage *image,
 		kimage_entry_t *old;
 
 		/* Allocate a page, if we run out of memory give up */
-		page = kimage_alloc_pages(gfp_mask, 0, KEXEC_SOURCE_MEMORY_LIMIT);
+		page = kimage_alloc_pages(gfp_mask, 0, KEXEC_CONTROL_MEMORY_LIMIT);
 		if (!page)
 			return NULL;
 		/* If the page cannot be used file it away */
-		if (kexec_page_to_pfn(page) >
+		if (page_to_pfn(page) >
 				(KEXEC_SOURCE_MEMORY_LIMIT >> PAGE_SHIFT)) {
 			list_add(&page->lru, &image->unuseable_pages);
 			continue;
 		}
-		addr = kexec_page_to_pfn(page) << PAGE_SHIFT;
+		addr = page_to_pfn(page) << PAGE_SHIFT;
 
 		/* If it is the destination page we want use it */
 		if (addr == destination)
@@ -1141,6 +1141,12 @@ void crash_kexec(struct pt_regs *regs)
 			crash_save_vmcoreinfo();
 			machine_crash_shutdown(&fixed_regs);
 			machine_kexec(kexec_crash_image);
+#ifdef CONFIG_XEN
+		} else if (is_initial_xendomain()) {
+			xen_kexec_exec_t xke = { .type = KEXEC_TYPE_CRASH };
+
+			VOID(HYPERVISOR_kexec_op(KEXEC_CMD_kexec, &xke));
+#endif
 		}
 		mutex_unlock(&kexec_mutex);
 	}

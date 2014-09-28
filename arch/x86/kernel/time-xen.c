@@ -23,6 +23,7 @@
 
 #include <asm/vsyscall.h>
 #include <asm/delay.h>
+#include <asm/efi.h>
 #include <asm/time.h>
 #include <asm/timer.h>
 

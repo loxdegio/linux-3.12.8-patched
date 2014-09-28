@@ -278,6 +278,7 @@ int __init efi_config_init(
 #else
 	const bool efi_64bit = true;
 #define early_memremap early_ioremap
+#define early_memunmap early_iounmap
 #endif
 	void *config_tables, *tablep;
 	int i, sz;
@@ -311,7 +312,8 @@ int __init efi_config_init(
 			if (table64 >> 32) {
 				pr_cont("\n");
 				pr_err("Table located above 4GB, disabling EFI.\n");
-				early_iounmap(config_tables, nr_tables * sz);
+				early_iounmap(config_tables,
+					       efi.systab->nr_tables * sz);
 				return -EINVAL;
 			}
 #endif
@@ -326,8 +328,7 @@ int __init efi_config_init(
 		tablep += sz;
 	}
 	pr_cont("\n");
-	early_iounmap(config_tables, nr_tables * sz);
-#undef early_memremap
+	early_iounmap(config_tables, efi.systab->nr_tables * sz);
 
 	set_bit(EFI_CONFIG_TABLES, &efi.flags);
 

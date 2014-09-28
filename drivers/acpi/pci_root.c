@@ -615,13 +615,6 @@ static int acpi_pci_root_add(struct acpi_device *device,
 	if (no_aspm)
 		pcie_no_aspm();
 
-#ifdef CONFIG_PCI_GUESTDEV
-	if (device_create_file(&device->dev, &dev_attr_seg))
-		dev_warn(&device->dev, "could not create seg attr\n");
-	if (device_create_file(&device->dev, &dev_attr_bbn))
-		dev_warn(&device->dev, "could not create bbn attr\n");
-#endif
-
 	pci_acpi_add_bus_pm_notifier(device, root->bus);
 	if (device->wakeup.flags.run_wake)
 		device_set_run_wake(root->bus->bridge, true);

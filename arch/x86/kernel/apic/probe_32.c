@@ -227,7 +227,7 @@ generic_mps_oem_check(struct mpc_table *mpc, char *oem, char *productid)
 		if (!(*drv)->mps_oem_check(mpc, oem, productid))
 			continue;
 
-		if (!cmdline_apic && apic == &apic_default) {
+		if (!cmdline_apic) {
 			apic = *drv;
 			printk(KERN_INFO "Switched to APIC driver `%s'.\n",
 			       apic->name);

@@ -142,7 +142,7 @@ static inline void switch_mm(struct mm_struct *prev, struct mm_struct *next,
 			 * to make sure to use no freed page tables.
 			 */
 			load_cr3(next->pgd);
-			xen_new_user_pt(next->pgd);
+			xen_new_user_pt(__pa(__user_pgd(next->pgd)));
 			load_LDT_nolock(&next->context);
 		}
 	}
