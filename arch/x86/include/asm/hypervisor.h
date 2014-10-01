@@ -20,6 +20,8 @@
 #ifndef _ASM_X86_HYPERVISOR_H
 #define _ASM_X86_HYPERVISOR_H
 
+#include <xen/interface/physdev.h>
+
 #ifdef CONFIG_HYPERVISOR_GUEST
 
 #include <asm/kvm_para.h>
