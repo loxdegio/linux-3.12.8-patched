@@ -6,6 +6,8 @@
  *	Do not add new entries to this file unless the definitions
  *	are shared between multiple drivers.
  */
+#ifndef _LINUX_PCI_IDS_H
+#define _LINUX_PCI_IDS_H
 
 /* Device classes and subclasses */
 
@@ -75,7 +77,6 @@
 #define PCI_CLASS_SYSTEM_RTC		0x0803
 #define PCI_CLASS_SYSTEM_PCI_HOTPLUG	0x0804
 #define PCI_CLASS_SYSTEM_SDHCI		0x0805
-#define PCI_CLASS_SYSTEM_IOMMU		0x0806
 #define PCI_CLASS_SYSTEM_OTHER		0x0880
 
 #define PCI_BASE_CLASS_INPUT		0x09
@@ -2556,6 +2557,7 @@
 #define PCI_DEVICE_ID_INTEL_MFD_EMMC0	0x0823
 #define PCI_DEVICE_ID_INTEL_MFD_EMMC1	0x0824
 #define PCI_DEVICE_ID_INTEL_MRST_SD2	0x084F
+#define PCI_DEVICE_ID_INTEL_QUARK_X1000_ILB	0x095E
 #define PCI_DEVICE_ID_INTEL_I960	0x0960
 #define PCI_DEVICE_ID_INTEL_I960RM	0x0962
 #define PCI_DEVICE_ID_INTEL_CENTERTON_ILB	0x0c60
@@ -2969,3 +2971,5 @@
 #define PCI_DEVICE_ID_XEN_PLATFORM	0x0001
 
 #define PCI_VENDOR_ID_OCZ		0x1b85
+
+#endif /* _LINUX_PCI_IDS_H */

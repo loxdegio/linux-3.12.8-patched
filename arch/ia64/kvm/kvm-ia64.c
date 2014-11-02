@@ -190,7 +190,7 @@ void kvm_arch_check_processor_compat(void *rtn)
 	*(int *)rtn = 0;
 }
 
-int kvm_dev_ioctl_check_extension(long ext)
+int kvm_vm_ioctl_check_extension(struct kvm *kvm, long ext)
 {
 
 	int r;
@@ -703,7 +703,7 @@ again:
 out:
 	srcu_read_unlock(&vcpu->kvm->srcu, idx);
 	if (r > 0) {
-		schedule();
+		cond_resched();
 		idx = srcu_read_lock(&vcpu->kvm->srcu);
 		goto again;
 	}

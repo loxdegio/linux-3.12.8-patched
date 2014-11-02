@@ -64,6 +64,11 @@ static struct timer_list spusched_timer;
 static struct timer_list spuloadavg_timer;
 
 /*
+ * Priority of a normal, non-rt, non-niced'd process (aka nice level 0).
+ */
+#define NORMAL_PRIO		120
+
+/*
  * Frequency of the spu scheduler tick.  By default we do one SPU scheduler
  * tick for every 10 CPU scheduler ticks.
  */
@@ -1034,13 +1039,11 @@ void spuctx_switch_state(struct spu_context *ctx,
 {
 	unsigned long long curtime;
 	signed long long delta;
-	struct timespec ts;
 	struct spu *spu;
 	enum spu_utilization_state old_state;
 	int node;
 
-	ktime_get_ts(&ts);
-	curtime = timespec_to_ns(&ts);
+	curtime = ktime_get_ns();
 	delta = curtime - ctx->stats.tstamp;
 
 	WARN_ON(!mutex_is_locked(&ctx->state_mutex));

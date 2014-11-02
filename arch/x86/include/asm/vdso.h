@@ -18,15 +18,15 @@ struct vdso_image {
 
 	unsigned long alt, alt_len;
 
-	unsigned long sym_end_mapping;  /* Total size of the mapping */
+	long sym_vvar_start;  /* Negative offset to the vvar area */
 
-	unsigned long sym_vvar_page;
-	unsigned long sym_hpet_page;
-	unsigned long sym_VDSO32_NOTE_MASK;
-	unsigned long sym___kernel_sigreturn;
-	unsigned long sym___kernel_rt_sigreturn;
-	unsigned long sym___kernel_vsyscall;
-	unsigned long sym_VDSO32_SYSENTER_RETURN;
+	long sym_vvar_page;
+	long sym_hpet_page;
+	long sym_VDSO32_NOTE_MASK;
+	long sym___kernel_sigreturn;
+	long sym___kernel_rt_sigreturn;
+	long sym___kernel_vsyscall;
+	long sym_VDSO32_SYSENTER_RETURN;
 };
 
 #ifdef CONFIG_X86_64
@@ -39,7 +39,7 @@ extern const struct vdso_image vdso_image_x32;
 
 #if defined CONFIG_X86_32 || defined CONFIG_COMPAT
 extern const struct vdso_image vdso_image_32_int80;
-#if defined(CONFIG_COMPAT) || defined(CONFIG_X86_XEN)
+#ifdef CONFIG_COMPAT
 extern const struct vdso_image vdso_image_32_syscall;
 #endif
 extern const struct vdso_image vdso_image_32_sysenter;

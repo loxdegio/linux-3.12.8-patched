@@ -172,7 +172,6 @@
 #include <linux/firmware.h>
 #include <linux/rtnetlink.h>
 #include <asm/unaligned.h>
-#include <xen/xen_pvonhvm.h>
 
 
 #define DRV_NAME		"e100"
@@ -209,7 +208,7 @@ MODULE_PARM_DESC(use_io, "Force use of i/o access mode");
 #define INTEL_8255X_ETHERNET_DEVICE(device_id, ich) {\
 	PCI_VENDOR_ID_INTEL, device_id, PCI_ANY_ID, PCI_ANY_ID, \
 	PCI_CLASS_NETWORK_ETHERNET << 8, 0xFFFF00, ich }
-static DEFINE_PCI_DEVICE_TABLE(e100_id_table) = {
+static const struct pci_device_id e100_id_table[] = {
 	INTEL_8255X_ETHERNET_DEVICE(0x1029, 0),
 	INTEL_8255X_ETHERNET_DEVICE(0x1030, 0),
 	INTEL_8255X_ETHERNET_DEVICE(0x1031, 3),
@@ -3187,9 +3186,6 @@ static struct pci_driver e100_driver = {
 
 static int __init e100_init_module(void)
 {
-	if (xen_pvonhvm_unplugged_nics)
-		return -EBUSY;
-
 	if (((1 << debug) - 1) & NETIF_MSG_DRV) {
 		pr_info("%s, %s\n", DRV_DESCRIPTION, DRV_VERSION);
 		pr_info("%s\n", DRV_COPYRIGHT);

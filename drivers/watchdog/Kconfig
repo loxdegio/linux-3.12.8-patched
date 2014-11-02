@@ -1293,7 +1293,7 @@ config DIAG288_WATCHDOG
 	  both.
 
 	  To compile this driver as a module, choose M here. The module
-	  will be called vmwatchdog.
+	  will be called diag288_wdt.
 
 # SUPERH (sh + sh64) Architecture
 
@@ -1347,7 +1347,7 @@ config WATCHDOG_RIO
 
 config XEN_WDT
 	tristate "Xen Watchdog support"
-	depends on XEN || PARAVIRT_XEN
+	depends on XEN
 	help
 	  Say Y here to support the hypervisor watchdog capability provided
 	  by Xen 4.0 and newer.  The watchdog timeout period is normally one

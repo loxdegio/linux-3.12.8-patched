@@ -1,9 +1,9 @@
-linux-3.16.x-patched
+linux-3.17.x-patched
 ====================
 
 Versione del geek kernel con le patch scelte da me
 
-bfq bfs bld uksm suse zen
+bfq suse zen
 
 Se vuoi scaricare questo repo e rimanere aggiornato con tutte le modifiche digita su terminale:
 

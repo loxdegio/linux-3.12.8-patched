@@ -16,9 +16,7 @@
 #include <linux/timer.h>
 #include <linux/init.h>
 #include <asm/div64.h>
-#ifndef CONFIG_XEN /* This seems unmotivated even outside of Xen... */
 #include <asm/io.h>
-#endif
 
 /* clocksource cycle base type */
 typedef u64 cycle_t;
@@ -164,7 +162,6 @@ extern u64 timecounter_cyc2time(struct timecounter *tc,
  * @archdata:		arch-specific data
  * @suspend:		suspend function for the clocksource, if necessary
  * @resume:		resume function for the clocksource, if necessary
- * @cycle_last:		most recent cycle counter value seen by ::read()
  * @owner:		module reference, must be set by clocksource in modules
  */
 struct clocksource {
@@ -173,7 +170,6 @@ struct clocksource {
 	 * clocksource itself is cacheline aligned.
 	 */
 	cycle_t (*read)(struct clocksource *cs);
-	cycle_t cycle_last;
 	cycle_t mask;
 	u32 mult;
 	u32 shift;

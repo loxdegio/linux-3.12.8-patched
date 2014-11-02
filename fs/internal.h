@@ -42,6 +42,7 @@ extern void __init chrdev_init(void);
 /*
  * namei.c
  */
+extern int __inode_permission(struct inode *, int);
 extern int user_path_mountpoint_at(int, const char __user *, unsigned int, struct path *);
 extern int vfs_path_lookup(struct dentry *, struct vfsmount *,
 			   const char *, unsigned int, struct path *);
@@ -130,10 +131,21 @@ extern long prune_dcache_sb(struct super_block *sb, unsigned long nr_to_scan,
 /*
  * read_write.c
  */
-extern ssize_t __kernel_write(struct file *, const char *, size_t, loff_t *);
 extern int rw_verify_area(int, struct file *, const loff_t *, size_t);
+
+/*
+ * splice.c
+ */
+extern long do_splice_direct(struct file *in, loff_t *ppos, struct file *out,
+		loff_t *opos, size_t len, unsigned int flags);
 
 /*
  * pipe.c
  */
 extern const struct file_operations pipefifo_fops;
+
+/*
+ * fs_pin.c
+ */
+extern void sb_pin_kill(struct super_block *sb);
+extern void mnt_pin_kill(struct mount *m);

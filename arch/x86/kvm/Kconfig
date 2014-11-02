@@ -7,7 +7,6 @@ source "virt/kvm/Kconfig"
 menuconfig VIRTUALIZATION
 	bool "Virtualization"
 	depends on HAVE_KVM || X86
-	depends on !XEN
 	default y
 	---help---
 	  Say Y here to get to see options for using your Linux host to run other
@@ -28,6 +27,7 @@ config KVM
 	select MMU_NOTIFIER
 	select ANON_INODES
 	select HAVE_KVM_IRQCHIP
+	select HAVE_KVM_IRQFD
 	select HAVE_KVM_IRQ_ROUTING
 	select HAVE_KVM_EVENTFD
 	select KVM_APIC_ARCHITECTURE

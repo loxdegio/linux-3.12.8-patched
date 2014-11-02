@@ -268,6 +268,9 @@
 		VMLINUX_SYMBOL(__start_pci_fixups_suspend) = .;		\
 		*(.pci_fixup_suspend)					\
 		VMLINUX_SYMBOL(__end_pci_fixups_suspend) = .;		\
+		VMLINUX_SYMBOL(__start_pci_fixups_suspend_late) = .;	\
+		*(.pci_fixup_suspend_late)				\
+		VMLINUX_SYMBOL(__end_pci_fixups_suspend_late) = .;	\
 	}								\
 									\
 	/* Built-in firmware blobs */					\
@@ -360,8 +363,6 @@
 		MEM_KEEP(init.rodata)					\
 		MEM_KEEP(exit.rodata)					\
 	}								\
-									\
-	EH_FRAME							\
 									\
 	/* Built-in module parameters. */				\
 	__param : AT(ADDR(__param) - LOAD_OFFSET) {			\
@@ -808,23 +809,3 @@
 	BSS(bss_align)							\
 	. = ALIGN(stop_align);						\
 	VMLINUX_SYMBOL(__bss_stop) = .;
-
-#ifdef CONFIG_STACK_UNWIND
-#define EH_FRAME							\
-		/* Unwind data binary search table */			\
-		. = ALIGN(8);						\
-		.eh_frame_hdr : AT(ADDR(.eh_frame_hdr) - LOAD_OFFSET) {	\
-			VMLINUX_SYMBOL(__start_unwind_hdr) = .;		\
-			*(.eh_frame_hdr)				\
-			VMLINUX_SYMBOL(__end_unwind_hdr) = .;		\
-		}							\
-		/* Unwind data */					\
-		. = ALIGN(8);						\
-		.eh_frame : AT(ADDR(.eh_frame) - LOAD_OFFSET) {		\
-			VMLINUX_SYMBOL(__start_unwind) = .;		\
-			*(.eh_frame)					\
-			VMLINUX_SYMBOL(__end_unwind) = .;		\
-		}
-#else
-#define EH_FRAME
-#endif

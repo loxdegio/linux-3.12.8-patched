@@ -18,9 +18,6 @@
 #include <asm/nmi.h>
 extern void touch_nmi_watchdog(void);
 #else
-#ifdef CONFIG_XEN
-#include <asm/nmi.h>
-#endif
 static inline void touch_nmi_watchdog(void)
 {
 	touch_softlockup_watchdog();
@@ -64,6 +61,10 @@ extern int sysctl_softlockup_all_cpu_backtrace;
 struct ctl_table;
 extern int proc_dowatchdog(struct ctl_table *, int ,
 			   void __user *, size_t *, loff_t *);
+#endif
+
+#ifdef CONFIG_HAVE_ACPI_APEI_NMI
+#include <asm/nmi.h>
 #endif
 
 #endif

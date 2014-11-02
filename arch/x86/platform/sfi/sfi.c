@@ -25,6 +25,7 @@
 #include <linux/init.h>
 #include <linux/sfi.h>
 #include <linux/io.h>
+#include <linux/irqdomain.h>
 
 #include <asm/io_apic.h>
 #include <asm/mpspec.h>
@@ -32,7 +33,6 @@
 #include <asm/apic.h>
 
 #ifdef CONFIG_X86_LOCAL_APIC
-#ifndef CONFIG_XEN
 static unsigned long sfi_lapic_addr __initdata = APIC_DEFAULT_PHYS_BASE;
 
 /* All CPUs enumerated by SFI must be present and enabled */
@@ -48,9 +48,6 @@ static void __init mp_sfi_register_lapic(u8 id)
 
 	generic_processor_info(id, GET_APIC_VERSION(apic_read(APIC_LVR)));
 }
-#else
-#define mp_sfi_register_lapic(id)
-#endif
 
 static int __init sfi_parse_cpus(struct sfi_table_header *table)
 {
@@ -74,28 +71,32 @@ static int __init sfi_parse_cpus(struct sfi_table_header *table)
 #endif /* CONFIG_X86_LOCAL_APIC */
 
 #ifdef CONFIG_X86_IO_APIC
+static struct irq_domain_ops sfi_ioapic_irqdomain_ops = {
+	.map = mp_irqdomain_map,
+};
 
 static int __init sfi_parse_ioapic(struct sfi_table_header *table)
 {
 	struct sfi_table_simple *sb;
 	struct sfi_apic_table_entry *pentry;
 	int i, num;
+	struct ioapic_domain_cfg cfg = {
+		.type = IOAPIC_DOMAIN_STRICT,
+		.ops = &sfi_ioapic_irqdomain_ops,
+	};
 
 	sb = (struct sfi_table_simple *)table;
 	num = SFI_GET_NUM_ENTRIES(sb, struct sfi_apic_table_entry);
 	pentry = (struct sfi_apic_table_entry *)sb->pentry;
 
 	for (i = 0; i < num; i++) {
-		mp_register_ioapic(i, pentry->phys_addr, gsi_top);
+		mp_register_ioapic(i, pentry->phys_addr, gsi_top, &cfg);
 		pentry++;
 	}
 
-#ifndef CONFIG_XEN
 	WARN(pic_mode, KERN_WARNING
 		"SFI: pic_mod shouldn't be 1 when IOAPIC table is present\n");
 	pic_mode = 0;
-#endif
-
 	return 0;
 }
 #endif /* CONFIG_X86_IO_APIC */

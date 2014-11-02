@@ -5,30 +5,14 @@
 # define PA_CONTROL_PAGE	0
 # define VA_CONTROL_PAGE	1
 # define PA_PGD			2
-# ifndef CONFIG_XEN
 # define PA_SWAP_PAGE		3
 # define PAGES_NR		4
-# else /* CONFIG_XEN */
-/*
- * The hypervisor interface implicitly requires that all entries (except
- * for possibly the final one) are arranged in matching PA_/VA_ pairs.
-#  define VA_PGD		3
- */
-#  define PA_SWAP_PAGE		4
-#  define PAGES_NR		5
-# endif /* CONFIG_XEN */
 #else
 # define PA_CONTROL_PAGE	0
 # define VA_CONTROL_PAGE	1
 # define PA_TABLE_PAGE		2
-# ifndef CONFIG_XEN
 # define PA_SWAP_PAGE		3
 # define PAGES_NR		4
-# else /* CONFIG_XEN, see comment above
-#  define VA_TABLE_PAGE		3 */
-#  define PA_SWAP_PAGE		4
-#  define PAGES_NR		5
-# endif /* CONFIG_XEN */
 #endif
 
 # define KEXEC_CONTROL_CODE_MAX_SIZE	2048
@@ -39,6 +23,9 @@
 
 #include <asm/page.h>
 #include <asm/ptrace.h>
+#include <asm/bootparam.h>
+
+struct kimage;
 
 /*
  * KEXEC_SOURCE_MEMORY_LIMIT maximum page get_free_page can return.
@@ -76,6 +63,10 @@
 /* The native architecture */
 # define KEXEC_ARCH KEXEC_ARCH_X86_64
 #endif
+
+/* Memory to backup during crash kdump */
+#define KEXEC_BACKUP_SRC_START	(0UL)
+#define KEXEC_BACKUP_SRC_END	(640 * 1024UL)	/* 640K */
 
 /*
  * CPU does not save ss and sp on stack if execution is already
@@ -176,24 +167,49 @@ struct kimage_arch {
 	pud_t *pud;
 	pmd_t *pmd;
 	pte_t *pte;
+	/* Details of backup region */
+	unsigned long backup_src_start;
+	unsigned long backup_src_sz;
+
+	/* Physical address of backup segment */
+	unsigned long backup_load_addr;
+
+	/* Core ELF header buffer */
+	void *elf_headers;
+	unsigned long elf_headers_sz;
+	unsigned long elf_load_addr;
+};
+#endif /* CONFIG_X86_32 */
+
+#ifdef CONFIG_X86_64
+/*
+ * Number of elements and order of elements in this structure should match
+ * with the ones in arch/x86/purgatory/entry64.S. If you make a change here
+ * make an appropriate change in purgatory too.
+ */
+struct kexec_entry64_regs {
+	uint64_t rax;
+	uint64_t rcx;
+	uint64_t rdx;
+	uint64_t rbx;
+	uint64_t rsp;
+	uint64_t rbp;
+	uint64_t rsi;
+	uint64_t rdi;
+	uint64_t r8;
+	uint64_t r9;
+	uint64_t r10;
+	uint64_t r11;
+	uint64_t r12;
+	uint64_t r13;
+	uint64_t r14;
+	uint64_t r15;
+	uint64_t rip;
 };
 #endif
 
 typedef void crash_vmclear_fn(void);
 extern crash_vmclear_fn __rcu *crash_vmclear_loaded_vmcss;
-
-/* Under Xen we need to work with machine addresses. These macros give the
- * machine address of a certain page to the generic kexec code instead of
- * the pseudo physical address which would be given by the default macros.
- */
-
-#ifdef CONFIG_XEN
-#define KEXEC_ARCH_HAS_PAGE_MACROS
-#define kexec_page_to_pfn(page)  pfn_to_mfn(page_to_pfn(page))
-#define kexec_pfn_to_page(pfn)   pfn_to_page(mfn_to_pfn(pfn))
-#define kexec_virt_to_phys(addr) virt_to_machine(addr)
-#define kexec_phys_to_virt(addr) phys_to_virt(machine_to_phys(addr))
-#endif
 
 #endif /* __ASSEMBLY__ */
 

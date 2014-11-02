@@ -124,7 +124,7 @@ struct bus_type {
 
 	const struct dev_pm_ops *pm;
 
-	struct iommu_ops *iommu_ops;
+	const struct iommu_ops *iommu_ops;
 
 	struct subsys_private *p;
 	struct lock_class_key lock_key;
@@ -605,6 +605,10 @@ extern int devres_release_group(struct device *dev, void *id);
 
 /* managed devm_k.alloc/kfree for device drivers */
 extern void *devm_kmalloc(struct device *dev, size_t size, gfp_t gfp);
+extern char *devm_kvasprintf(struct device *dev, gfp_t gfp, const char *fmt,
+			     va_list ap);
+extern char *devm_kasprintf(struct device *dev, gfp_t gfp,
+			    const char *fmt, ...);
 static inline void *devm_kzalloc(struct device *dev, size_t size, gfp_t gfp)
 {
 	return devm_kmalloc(dev, size, gfp | __GFP_ZERO);
@@ -631,8 +635,6 @@ extern unsigned long devm_get_free_pages(struct device *dev,
 extern void devm_free_pages(struct device *dev, unsigned long addr);
 
 void __iomem *devm_ioremap_resource(struct device *dev, struct resource *res);
-void __iomem *devm_request_and_ioremap(struct device *dev,
-			struct resource *res);
 
 /* allows to add/remove a custom action to devres stack */
 int devm_add_action(struct device *dev, void (*action)(void *), void *data);
@@ -1030,41 +1032,6 @@ extern __printf(3, 4)
 int dev_printk_emit(int level, const struct device *dev, const char *fmt, ...);
 
 extern __printf(3, 4)
-
-#if defined(KMSG_COMPONENT) && (defined(CONFIG_KMSG_IDS) || defined(__KMSG_CHECKER))
-/* dev_printk_hash for message documentation */
-#if defined(__KMSG_CHECKER) && defined(KMSG_COMPONENT)
-
-/* generate magic string for scripts/kmsg-doc to parse */
-#define dev_printk_hash(level, dev, format, arg...) \
-	__KMSG_DEV(level _FMT_ format _ARGS_ dev, ## arg _END_)
-
-#elif defined(CONFIG_KMSG_IDS) && defined(KMSG_COMPONENT)
-
-int printk_dev_hash(const char *, const char *, const char *, ...);
-#define dev_printk_hash(level, dev, format, arg...) \
-	printk_dev_hash(level "%s.%06x: ", dev_driver_string(dev), \
-			"%s: " format, dev_name(dev), ## arg)
-
-#endif
-
-#define dev_printk(level, dev, format, arg...)		\
-	dev_printk_hash(level , dev, format, ## arg)
-#define dev_emerg(dev, format, arg...)		\
-	dev_printk_hash(KERN_EMERG , dev , format , ## arg)
-#define dev_alert(dev, format, arg...)		\
-	dev_printk_hash(KERN_ALERT , dev , format , ## arg)
-#define dev_crit(dev, format, arg...)		\
-	dev_printk_hash(KERN_CRIT , dev , format , ## arg)
-#define dev_err(dev, format, arg...)		\
-	dev_printk_hash(KERN_ERR , dev , format , ## arg)
-#define dev_warn(dev, format, arg...)		\
-	dev_printk_hash(KERN_WARNING , dev , format , ## arg)
-#define dev_notice(dev, format, arg...)		\
-	dev_printk_hash(KERN_NOTICE , dev , format , ## arg)
-#define _dev_info(dev, format, arg...)		\
-	dev_printk_hash(KERN_INFO , dev , format , ## arg)
-#else
 int dev_printk(const char *level, const struct device *dev,
 	       const char *fmt, ...);
 extern __printf(2, 3)
@@ -1081,7 +1048,7 @@ extern __printf(2, 3)
 int dev_notice(const struct device *dev, const char *fmt, ...);
 extern __printf(2, 3)
 int _dev_info(const struct device *dev, const char *fmt, ...);
-#endif
+
 #else
 
 static inline __printf(3, 0)

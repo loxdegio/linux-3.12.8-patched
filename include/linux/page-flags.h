@@ -109,11 +109,6 @@ enum pageflags {
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
 	PG_compound_lock,
 #endif
-#ifdef CONFIG_XEN
-	PG_foreign,		/* Page is owned by foreign allocator. */
-	/* PG_netback,		   Page is owned by netback */
-	PG_blkback,		/* Page is owned by blkback */
-#endif
 	__NR_PAGEFLAGS,
 
 	/* Filesystems */
@@ -126,15 +121,8 @@ enum pageflags {
 	PG_fscache = PG_private_2,	/* page backed by cache */
 
 	/* XEN */
-#if defined(CONFIG_XEN)
-	PG_pinned = PG_locked,	/* Cannot alias with PG_owner_priv_1 since
-				 * bad_page() checks should include this bit.
-				 * Should not use PG_arch_1 as that may have
-				 * a different purpose elsewhere. */
-#elif defined(CONFIG_PARAVIRT_XEN)
 	PG_pinned = PG_owner_priv_1,
 	PG_savepinned = PG_dirty,
-#endif
 
 	/* SLOB */
 	PG_slob_free = PG_private,
@@ -183,12 +171,11 @@ static inline int __TestClearPage##uname(struct page *page)		\
 #define __PAGEFLAG(uname, lname) TESTPAGEFLAG(uname, lname)		\
 	__SETPAGEFLAG(uname, lname)  __CLEARPAGEFLAG(uname, lname)
 
-#define PAGEFLAG_FALSE(uname) 						\
-static inline int Page##uname(const struct page *page)			\
-			{ return 0; }
-
 #define TESTSCFLAG(uname, lname)					\
 	TESTSETFLAG(uname, lname) TESTCLEARFLAG(uname, lname)
+
+#define TESTPAGEFLAG_FALSE(uname)					\
+static inline int Page##uname(const struct page *page) { return 0; }
 
 #define SETPAGEFLAG_NOOP(uname)						\
 static inline void SetPage##uname(struct page *page) {  }
@@ -199,11 +186,20 @@ static inline void ClearPage##uname(struct page *page) {  }
 #define __CLEARPAGEFLAG_NOOP(uname)					\
 static inline void __ClearPage##uname(struct page *page) {  }
 
+#define TESTSETFLAG_FALSE(uname)					\
+static inline int TestSetPage##uname(struct page *page) { return 0; }
+
 #define TESTCLEARFLAG_FALSE(uname)					\
 static inline int TestClearPage##uname(struct page *page) { return 0; }
 
 #define __TESTCLEARFLAG_FALSE(uname)					\
 static inline int __TestClearPage##uname(struct page *page) { return 0; }
+
+#define PAGEFLAG_FALSE(uname) TESTPAGEFLAG_FALSE(uname)			\
+	SETPAGEFLAG_NOOP(uname) CLEARPAGEFLAG_NOOP(uname)
+
+#define TESTSCFLAG_FALSE(uname)						\
+	TESTSETFLAG_FALSE(uname) TESTCLEARFLAG_FALSE(uname)
 
 struct page;	/* forward declaration */
 
@@ -217,12 +213,8 @@ PAGEFLAG(Active, active) __CLEARPAGEFLAG(Active, active)
 	TESTCLEARFLAG(Active, active)
 __PAGEFLAG(Slab, slab)
 PAGEFLAG(Checked, checked)		/* Used by some filesystems */
-#if defined(CONFIG_XEN) || defined(CONFIG_PARAVIRT_XEN)
 PAGEFLAG(Pinned, pinned) TESTSCFLAG(Pinned, pinned)	/* Xen */
-#endif
-#ifdef CONFIG_PARAVIRT_XEN
 PAGEFLAG(SavePinned, savepinned);			/* Xen */
-#endif
 PAGEFLAG(Reserved, reserved) __CLEARPAGEFLAG(Reserved, reserved)
 PAGEFLAG(SwapBacked, swapbacked) __CLEARPAGEFLAG(SwapBacked, swapbacked)
 	__SETPAGEFLAG(SwapBacked, swapbacked)
@@ -264,7 +256,6 @@ PAGEFLAG_FALSE(HighMem)
 PAGEFLAG(SwapCache, swapcache)
 #else
 PAGEFLAG_FALSE(SwapCache)
-	SETPAGEFLAG_NOOP(SwapCache) CLEARPAGEFLAG_NOOP(SwapCache)
 #endif
 
 PAGEFLAG(Unevictable, unevictable) __CLEARPAGEFLAG(Unevictable, unevictable)
@@ -274,8 +265,8 @@ PAGEFLAG(Unevictable, unevictable) __CLEARPAGEFLAG(Unevictable, unevictable)
 PAGEFLAG(Mlocked, mlocked) __CLEARPAGEFLAG(Mlocked, mlocked)
 	TESTSCFLAG(Mlocked, mlocked) __TESTCLEARFLAG(Mlocked, mlocked)
 #else
-PAGEFLAG_FALSE(Mlocked) SETPAGEFLAG_NOOP(Mlocked)
-	TESTCLEARFLAG_FALSE(Mlocked) __TESTCLEARFLAG_FALSE(Mlocked)
+PAGEFLAG_FALSE(Mlocked) __CLEARPAGEFLAG_NOOP(Mlocked)
+	TESTSCFLAG_FALSE(Mlocked) __TESTCLEARFLAG_FALSE(Mlocked)
 #endif
 
 #ifdef CONFIG_ARCH_USES_PG_UNCACHED
@@ -331,28 +322,6 @@ static inline void SetPageUptodate(struct page *page)
 }
 
 CLEARPAGEFLAG(Uptodate, uptodate)
-
-#ifdef CONFIG_XEN
-TESTPAGEFLAG(Foreign, foreign)
-static inline void SetPageForeign(struct page *page,
-				  void (*dtor)(struct page *, unsigned int))
-{
-	BUG_ON(!dtor);
-	set_bit(PG_foreign, &page->flags);
-	page->index = (long)dtor;
-}
-static inline void ClearPageForeign(struct page *page)
-{
-	clear_bit(PG_foreign, &page->flags);
-	page->index = 0;
-}
-static inline void PageForeignDestructor(struct page *page, unsigned int order)
-{
-	((void (*)(struct page *, unsigned int))page->index)(page, order);
-}
-/*PAGEFLAG(Netback, netback)*/
-PAGEFLAG(Blkback, blkback)
-#endif
 
 extern void cancel_dirty_page(struct page *page, unsigned int account_size);
 
@@ -547,12 +516,6 @@ static inline void ClearPageSlabPfmemalloc(struct page *page)
 #define __PG_COMPOUND_LOCK		0
 #endif
 
-#ifndef CONFIG_XEN
-# define __PG_XEN		0
-#else
-# define __PG_XEN		(1 << PG_foreign)
-#endif
-
 /*
  * Flags checked when a page is freed.  Pages being freed should not have
  * these flags set.  It they are, there is a problem.
@@ -563,7 +526,7 @@ static inline void ClearPageSlabPfmemalloc(struct page *page)
 	 1 << PG_writeback | 1 << PG_reserved | \
 	 1 << PG_slab	 | 1 << PG_swapcache | 1 << PG_active | \
 	 1 << PG_unevictable | __PG_MLOCKED | __PG_HWPOISON | \
-	 __PG_COMPOUND_LOCK | __PG_XEN)
+	 __PG_COMPOUND_LOCK)
 
 /*
  * Flags checked when a page is prepped for return by the page allocator.

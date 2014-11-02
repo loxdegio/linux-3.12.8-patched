@@ -58,8 +58,6 @@ struct priority_group {
 	struct list_head pgpaths;
 };
 
-#define FEATURE_NO_PARTITIONS 1
-
 /* Multipath context */
 struct multipath {
 	struct list_head list;
@@ -94,7 +92,6 @@ struct multipath {
 	unsigned pg_init_retries;	/* Number of times to retry pg_init */
 	unsigned pg_init_count;		/* Number of times pg_init called */
 	unsigned pg_init_delay_msecs;	/* Number of msecs before pg_init retry */
-	unsigned features;		/* Additional selected features */
 
 	struct work_struct trigger_event;
 
@@ -161,9 +158,12 @@ static struct priority_group *alloc_priority_group(void)
 static void free_pgpaths(struct list_head *pgpaths, struct dm_target *ti)
 {
 	struct pgpath *pgpath, *tmp;
+	struct multipath *m = ti->private;
 
 	list_for_each_entry_safe(pgpath, tmp, pgpaths, list) {
 		list_del(&pgpath->list);
+		if (m->hw_handler_name)
+			scsi_dh_detach(bdev_get_queue(pgpath->path.dev->bdev));
 		dm_put_device(ti, pgpath->path.dev);
 		free_pgpath(pgpath);
 	}
@@ -373,8 +373,6 @@ static int __must_push_back(struct multipath *m)
 		 dm_noflush_suspending(m->ti)));
 }
 
-#define pg_ready(m) (!(m)->queue_io && !(m)->pg_init_required)
-
 /*
  * Map cloned requests
  */
@@ -402,11 +400,11 @@ static int multipath_map(struct dm_target *ti, struct request *clone,
 		if (!__must_push_back(m))
 			r = -EIO;	/* Failed */
 		goto out_unlock;
-	}
-	if (!pg_ready(m)) {
+	} else if (m->queue_io || m->pg_init_required) {
 		__pg_init_all_paths(m);
 		goto out_unlock;
 	}
+
 	if (set_mapinfo(m, map_context) < 0)
 		/* ENOMEM, requeue */
 		goto out_unlock;
@@ -761,10 +759,6 @@ static int parse_features(struct dm_arg_set *as, struct multipath *m)
 			continue;
 		}
 
-		if (!strcasecmp(arg_name, "no_partitions")) {
-			m->features |= FEATURE_NO_PARTITIONS;
-			continue;
-		}
 		if (!strcasecmp(arg_name, "pg_init_retries") &&
 		    (argc >= 1)) {
 			r = dm_read_arg(_args + 1, as, &m->pg_init_retries, &ti->error);
@@ -1134,9 +1128,8 @@ static void pg_init_done(void *data, int errors)
 			errors = 0;
 			break;
 		}
-		DMERR("Count not failover device %s: Handler scsi_dh_%s "
-		      "was not loaded.", pgpath->path.dev->name,
-		      m->hw_handler_name);
+		DMERR("Could not failover the device: Handler scsi_dh_%s "
+		      "Error %d.", m->hw_handler_name, errors);
 		/*
 		 * Fail path for now, so we do not ping pong
 		 */
@@ -1148,10 +1141,6 @@ static void pg_init_done(void *data, int errors)
 		 * controller so try the other pg.
 		 */
 		bypass_pg(m, pg, 1);
-		break;
-	case SCSI_DH_DEV_OFFLINED:
-		DMWARN("Device %s offlined.", pgpath->path.dev->name);
-		errors = 0;
 		break;
 	case SCSI_DH_RETRY:
 		/* Wait before retrying. */
@@ -1174,8 +1163,7 @@ static void pg_init_done(void *data, int errors)
 	spin_lock_irqsave(&m->lock, flags);
 	if (errors) {
 		if (pgpath == m->current_pgpath) {
-			DMERR("Could not failover device %s, error %d.",
-			      pgpath->path.dev->name, errors);
+			DMERR("Could not failover device. Error %d.", errors);
 			m->current_pgpath = NULL;
 			m->current_pg = NULL;
 		}
@@ -1367,14 +1355,11 @@ static void multipath_status(struct dm_target *ti, status_type_t type,
 		DMEMIT("%u ", m->queue_if_no_path +
 			      (m->pg_init_retries > 0) * 2 +
 			      (m->pg_init_delay_msecs != DM_PG_INIT_DELAY_DEFAULT) * 2 +
-			      m->retain_attached_hw_handler +
-			      (m->features & FEATURE_NO_PARTITIONS));
+			      m->retain_attached_hw_handler);
 		if (m->queue_if_no_path)
 			DMEMIT("queue_if_no_path ");
 		if (m->pg_init_retries)
 			DMEMIT("pg_init_retries %u ", m->pg_init_retries);
-		if (m->features & FEATURE_NO_PARTITIONS)
-			DMEMIT("no_partitions ");
 		if (m->pg_init_delay_msecs != DM_PG_INIT_DELAY_DEFAULT)
 			DMEMIT("pg_init_delay_msecs %u ", m->pg_init_delay_msecs);
 		if (m->retain_attached_hw_handler)

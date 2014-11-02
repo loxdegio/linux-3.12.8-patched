@@ -299,41 +299,6 @@ ENTRY(ret_from_fork)
 	CFI_ENDPROC
 END(ret_from_fork)
 
-#ifdef CONFIG_STACK_UNWIND
-ENTRY(arch_unwind_init_running)
-	CFI_STARTPROC
-	movl	4(%esp), %edx
-	movl	(%esp), %ecx
-	leal	4(%esp), %eax
-	movl	%ebx, PT_EBX(%edx)
-	xorl	%ebx, %ebx
-	movl	%ebx, PT_ECX(%edx)
-	movl	%ebx, PT_EDX(%edx)
-	movl	%esi, PT_ESI(%edx)
-	movl	%edi, PT_EDI(%edx)
-	movl	%ebp, PT_EBP(%edx)
-	movl	%ebx, PT_EAX(%edx)
-	movl	$__USER_DS, PT_DS(%edx)
-	movl	$__USER_DS, PT_ES(%edx)
-	movl	$__KERNEL_PERCPU, PT_FS(%edx)
-	movl	$__KERNEL_STACK_CANARY, PT_GS(%edx)
-	movl	%eax, PT_OLDESP(%edx)
-	movl	16(%esp), %eax
-	movl	%ebx, PT_ORIG_EAX(%edx)
-	movl	%ecx, PT_EIP(%edx)
-	movl	12(%esp), %ecx
-	movl	$__KERNEL_CS, PT_CS(%edx)
-	movl	%eax, 12(%esp)
-	movl	8(%esp), %eax
-	movl	%ecx, 8(%esp)
-	movl	%ebx, PT_EFLAGS(%edx)
-	movl	PT_EBX(%edx), %ebx
-	movl	$__KERNEL_DS, PT_OLDSS(%edx)
-	jmpl	*%eax
-	CFI_ENDPROC
-ENDPROC(arch_unwind_init_running)
-#endif
-
 ENTRY(ret_from_kernel_thread)
 	CFI_STARTPROC
 	pushl_cfi %eax
@@ -413,7 +378,7 @@ ENTRY(ia32_sysenter_target)
 	CFI_SIGNAL_FRAME
 	CFI_DEF_CFA esp, 0
 	CFI_REGISTER esp, ebp
-	movl SYSENTER_stack_sp0(%esp),%esp
+	movl TSS_sysenter_sp0(%esp),%esp
 sysenter_past_esp:
 	/*
 	 * Interrupts are disabled here, but we can't trace it until
@@ -718,7 +683,7 @@ END(syscall_badsys)
 sysenter_badsys:
 	movl $-ENOSYS,%eax
 	jmp sysenter_after_call
-END(syscall_badsys)
+END(sysenter_badsys)
 	CFI_ENDPROC
 
 .macro FIXUP_ESPFIX_STACK
@@ -987,7 +952,7 @@ ENTRY(spurious_interrupt_bug)
 	CFI_ENDPROC
 END(spurious_interrupt_bug)
 
-#ifdef CONFIG_PARAVIRT_XEN
+#ifdef CONFIG_XEN
 /* Xen doesn't set %esp to be precisely what the normal sysenter
    entrypoint expects, so fix it up before using the normal path. */
 ENTRY(xen_sysenter_target)
@@ -1077,7 +1042,7 @@ ENDPROC(xen_failsafe_callback)
 BUILD_INTERRUPT3(xen_hvm_callback_vector, HYPERVISOR_CALLBACK_VECTOR,
 		xen_evtchn_do_upcall)
 
-#endif	/* CONFIG_PARAVIRT_XEN */
+#endif	/* CONFIG_XEN */
 
 #if IS_ENABLED(CONFIG_HYPERV)
 
@@ -1094,9 +1059,6 @@ ENTRY(mcount)
 END(mcount)
 
 ENTRY(ftrace_caller)
-	cmpl $0, function_trace_stop
-	jne  ftrace_stub
-
 	pushl %eax
 	pushl %ecx
 	pushl %edx
@@ -1128,8 +1090,6 @@ END(ftrace_caller)
 
 ENTRY(ftrace_regs_caller)
 	pushf	/* push flags before compare (in cs location) */
-	cmpl $0, function_trace_stop
-	jne ftrace_restore_flags
 
 	/*
 	 * i386 does not save SS and ESP when coming from kernel.
@@ -1188,7 +1148,6 @@ GLOBAL(ftrace_regs_call)
 	popf			/* Pop flags at end (no addl to corrupt flags) */
 	jmp ftrace_ret
 
-ftrace_restore_flags:
 	popf
 	jmp  ftrace_stub
 #else /* ! CONFIG_DYNAMIC_FTRACE */
@@ -1196,9 +1155,6 @@ ftrace_restore_flags:
 ENTRY(mcount)
 	cmpl $__PAGE_OFFSET, %esp
 	jb ftrace_stub		/* Paging not enabled yet? */
-
-	cmpl $0, function_trace_stop
-	jne  ftrace_stub
 
 	cmpl $ftrace_stub, ftrace_trace_function
 	jnz trace
@@ -1322,7 +1278,7 @@ END(page_fault)
  * that sets up the real kernel stack. Check here, since we can't
  * allow the wrong stack to be used.
  *
- * "SYSENTER_stack_sp0+12" is because the NMI/debug handler will have
+ * "TSS_sysenter_sp0+12" is because the NMI/debug handler will have
  * already pushed 3 words if it hits on the sysenter instruction:
  * eflags, cs and eip.
  *
@@ -1334,7 +1290,7 @@ END(page_fault)
 	cmpw $__KERNEL_CS, 4(%esp)
 	jne \ok
 \label:
-	movl SYSENTER_stack_sp0 + \offset(%esp), %esp
+	movl TSS_sysenter_sp0 + \offset(%esp), %esp
 	CFI_DEF_CFA esp, 0
 	CFI_UNDEFINED eip
 	pushfl_cfi

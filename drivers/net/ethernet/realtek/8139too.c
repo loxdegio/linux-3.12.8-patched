@@ -113,7 +113,6 @@
 #include <linux/uaccess.h>
 #include <linux/gfp.h>
 #include <asm/irq.h>
-#include <xen/xen_pvonhvm.h>
 
 #define RTL8139_DRIVER_NAME   DRV_NAME " Fast Ethernet driver " DRV_VERSION
 
@@ -235,7 +234,7 @@ static const struct {
 };
 
 
-static DEFINE_PCI_DEVICE_TABLE(rtl8139_pci_tbl) = {
+static const struct pci_device_id rtl8139_pci_tbl[] = {
 	{0x10ec, 0x8139, PCI_ANY_ID, PCI_ANY_ID, 0, 0, RTL8139 },
 	{0x10ec, 0x8138, PCI_ANY_ID, PCI_ANY_ID, 0, 0, RTL8139 },
 	{0x1113, 0x1211, PCI_ANY_ID, PCI_ANY_ID, 0, 0, RTL8139 },
@@ -2662,9 +2661,6 @@ static struct pci_driver rtl8139_pci_driver = {
 
 static int __init rtl8139_init_module (void)
 {
-	if (xen_pvonhvm_unplugged_nics)
-		return -EBUSY;
-
 	/* when we're a module, we always print a version message,
 	 * even if no 8139 board is found.
 	 */

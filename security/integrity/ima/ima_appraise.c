@@ -75,6 +75,8 @@ enum integrity_status ima_get_cache_status(struct integrity_iint_cache *iint,
 		return iint->ima_bprm_status;
 	case MODULE_CHECK:
 		return iint->ima_module_status;
+	case FIRMWARE_CHECK:
+		return iint->ima_firmware_status;
 	case FILE_CHECK:
 	default:
 		return iint->ima_file_status;
@@ -94,6 +96,9 @@ static void ima_set_cache_status(struct integrity_iint_cache *iint,
 	case MODULE_CHECK:
 		iint->ima_module_status = status;
 		break;
+	case FIRMWARE_CHECK:
+		iint->ima_firmware_status = status;
+		break;
 	case FILE_CHECK:
 	default:
 		iint->ima_file_status = status;
@@ -112,6 +117,9 @@ static void ima_cache_flags(struct integrity_iint_cache *iint, int func)
 		break;
 	case MODULE_CHECK:
 		iint->flags |= (IMA_MODULE_APPRAISED | IMA_APPRAISED);
+		break;
+	case FIRMWARE_CHECK:
+		iint->flags |= (IMA_FIRMWARE_APPRAISED | IMA_APPRAISED);
 		break;
 	case FILE_CHECK:
 	default:
@@ -175,7 +183,7 @@ int ima_read_xattr(struct dentry *dentry,
 int ima_appraise_measurement(int func, struct integrity_iint_cache *iint,
 			     struct file *file, const unsigned char *filename,
 			     struct evm_ima_xattr_data *xattr_value,
-			     int xattr_len)
+			     int xattr_len, int opened)
 {
 	static const char op[] = "appraise_data";
 	char *cause = "unknown";
@@ -194,8 +202,11 @@ int ima_appraise_measurement(int func, struct integrity_iint_cache *iint,
 			goto out;
 
 		cause = "missing-hash";
-		status =
-		    (inode->i_size == 0) ? INTEGRITY_PASS : INTEGRITY_NOLABEL;
+		status = INTEGRITY_NOLABEL;
+		if (opened & FILE_CREATED) {
+			iint->flags |= IMA_NEW_FILE;
+			status = INTEGRITY_PASS;
+		}
 		goto out;
 	}
 
@@ -214,7 +225,7 @@ int ima_appraise_measurement(int func, struct integrity_iint_cache *iint,
 		hash_start = 1;
 	case IMA_XATTR_DIGEST:
 		if (iint->flags & IMA_DIGSIG_REQUIRED) {
-			cause = "IMA signature required";
+			cause = "IMA-signature-required";
 			status = INTEGRITY_FAIL;
 			break;
 		}

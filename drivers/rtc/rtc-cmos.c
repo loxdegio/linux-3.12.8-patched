@@ -36,7 +36,6 @@
 #include <linux/platform_device.h>
 #include <linux/log2.h>
 #include <linux/pm.h>
-#include <linux/efi.h>
 #include <linux/of.h>
 #include <linux/of_platform.h>
 #include <linux/dmi.h>
@@ -857,7 +856,7 @@ static void __exit cmos_do_remove(struct device *dev)
 	cmos->dev = NULL;
 }
 
-#ifdef	CONFIG_PM_SLEEP
+#ifdef CONFIG_PM
 
 static int cmos_suspend(struct device *dev)
 {
@@ -908,6 +907,8 @@ static inline int cmos_poweroff(struct device *dev)
 	return cmos_suspend(dev);
 }
 
+#ifdef	CONFIG_PM_SLEEP
+
 static int cmos_resume(struct device *dev)
 {
 	struct cmos_rtc	*cmos = dev_get_drvdata(dev);
@@ -955,6 +956,7 @@ static int cmos_resume(struct device *dev)
 	return 0;
 }
 
+#endif
 #else
 
 static inline int cmos_poweroff(struct device *dev)
@@ -1223,11 +1225,6 @@ static bool platform_driver_registered;
 static int __init cmos_init(void)
 {
 	int retval = 0;
-
-#ifdef CONFIG_XEN
-	if (efi_enabled(EFI_RUNTIME_SERVICES))
-		return -ENODEV;
-#endif
 
 #ifdef	CONFIG_PNP
 	retval = pnp_register_driver(&cmos_pnp_driver);

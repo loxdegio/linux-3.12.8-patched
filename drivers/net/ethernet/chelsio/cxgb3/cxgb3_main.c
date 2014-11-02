@@ -85,7 +85,7 @@ enum {
 #define CH_DEVICE(devid, idx) \
 	{ PCI_VENDOR_ID_CHELSIO, devid, PCI_ANY_ID, PCI_ANY_ID, 0, 0, idx }
 
-static DEFINE_PCI_DEVICE_TABLE(cxgb3_pci_tbl) = {
+static const struct pci_device_id cxgb3_pci_tbl[] = {
 	CH_DEVICE(0x20, 0),	/* PE9000 */
 	CH_DEVICE(0x21, 1),	/* T302E */
 	CH_DEVICE(0x22, 2),	/* T310E */
@@ -3307,17 +3307,7 @@ static int init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 	 * register at least one net device.
 	 */
 	for_each_port(adapter, i) {
-#ifndef CONFIG_XEN
 		err = register_netdev(adapter->port[i]);
-#else
-		rtnl_lock();
-		err = register_netdevice(adapter->port[i]);
-		if (!err) {
-			adapter->port[i]->wanted_features &= ~NETIF_F_GRO;
-			netdev_update_features(adapter->port[i]);
-		}
-		rtnl_unlock();
-#endif
 		if (err)
 			dev_warn(&pdev->dev,
 				 "cannot register net device %s, skipping\n",

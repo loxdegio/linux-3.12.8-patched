@@ -66,9 +66,6 @@
 #include <asm/eeh.h>
 #include <asm/reg.h>
 #include <asm/plpar_wrappers.h>
-#include <asm/cacheflush.h>
-#include <asm/cputable.h>
-#include <asm/code-patching.h>
 
 #include "pseries.h"
 
@@ -235,8 +232,7 @@ static void __init pseries_discover_pic(void)
 	struct device_node *np;
 	const char *typep;
 
-	for (np = NULL; (np = of_find_node_by_name(np,
-						   "interrupt-controller"));) {
+	for_each_node_by_name(np, "interrupt-controller") {
 		typep = of_get_property(np, "compatible", NULL);
 		if (strstr(typep, "open-pic")) {
 			pSeries_mpic_node = of_node_get(np);
@@ -354,7 +350,7 @@ static int alloc_dispatch_log_kmem_cache(void)
 
 	return alloc_dispatch_logs();
 }
-early_initcall(alloc_dispatch_log_kmem_cache);
+machine_early_initcall(pseries, alloc_dispatch_log_kmem_cache);
 
 static void pseries_lpar_idle(void)
 {
@@ -439,14 +435,9 @@ static void pSeries_machine_kexec(struct kimage *image)
 #endif
 
 #ifdef __LITTLE_ENDIAN__
-static bool ile_enabled;
-
 long pseries_big_endian_exceptions(void)
 {
 	long rc;
-
-	if (!ile_enabled)
-		return H_SUCCESS;
 
 	while (1) {
 		rc = enable_big_endian_exceptions();
@@ -456,52 +447,14 @@ long pseries_big_endian_exceptions(void)
 	}
 }
 
-static void swizzle_endian(u32 *start, u32 *end)
-{
-	for (; (long)start < (long)end; start++)
-		patch_instruction(start, swab32(*start));
-}
-
-static void fixup_missing_little_endian_exceptions(void)
-{
-	extern u32 *__start___fake_ile, *__stop___fake_ile;
-	extern u32 *__start___be_patch, *__stop___be_patch;
-	u32 **be_table = &__start___be_patch;
-	u32 **fake_table = &__start___fake_ile;
-
-	/* Make our big endian code look like big endian code */
-	for (; (long)be_table < (long)&__stop___be_patch; be_table += 2)
-		swizzle_endian(be_table[0], be_table[1]);
-
-	/* Now patch the interrupt handlers to branch to our BE code */
-	for (; (long)fake_table < (long)&__stop___fake_ile; fake_table += 3) {
-		u32 *le_handler = fake_table[0];
-		u32 *patched_insn = fake_table[1];
-		u32 *be_handler = fake_table[2];
-		u32 le_be_diff = (long)be_handler - (long)le_handler;
-		patch_instruction(patched_insn, *le_handler);
-		/* This patches the interrupt handler's first instruction into
-		   a branch that jumps to our BE handler that enables MSR_LE */
-		patch_instruction(le_handler, swab32(0x48000000 | le_be_diff));
-		/* Make sure that feature fixups use the new address for its
-		   code patching */
-		relocate_fixup_entry(&__start___ftr_fixup, &__stop___ftr_fixup,
-				     le_handler, patched_insn);
-	}
-}
-
 static long pseries_little_endian_exceptions(void)
 {
 	long rc;
 
 	while (1) {
 		rc = enable_little_endian_exceptions();
-
-		if (!H_IS_LONG_BUSY(rc)) {
-			ile_enabled = true;
+		if (!H_IS_LONG_BUSY(rc))
 			return rc;
-		}
-
 		mdelay(get_longbusy_msecs(rc));
 	}
 }
@@ -556,7 +509,11 @@ static void __init pSeries_setup_arch(void)
 static int __init pSeries_init_panel(void)
 {
 	/* Manually leave the kernel version on the panel. */
-	ppc_md.progress("SUSE Linux\n", 0);
+#ifdef __BIG_ENDIAN__
+	ppc_md.progress("Linux ppc64\n", 0);
+#else
+	ppc_md.progress("Linux ppc64le\n", 0);
+#endif
 	ppc_md.progress(init_utsname()->version, 0);
 
 	return 0;
@@ -776,19 +733,6 @@ static int __init pSeries_probe(void)
 			ppc_md.progress("H_SET_MODE LE exception fail", 0);
 			panic("Could not enable little endian exceptions");
 		}
-	} else {
-		/*
-		 * The hypervisor we're running on does not know how to
-		 * configure us to run interrupts in little endian mode,
-		 * so we have to cheat a bit.
-		 *
-		 * This call reprograms all interrupt handlers' first
-		 * instruction into a branch to a big endian fixup section
-		 * which only transitions us into little endian mode, then
-		 * returns back to the normal little endian interrupt
-		 * handler.
-		 */
-		fixup_missing_little_endian_exceptions();
 	}
 #endif
 

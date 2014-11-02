@@ -388,7 +388,7 @@ int scsi_dh_activate(struct request_queue *q, activate_complete fn, void *data)
 	struct device *dev = NULL;
 
 	spin_lock_irqsave(q->queue_lock, flags);
-	sdev = scsi_device_from_queue(q);
+	sdev = q->queuedata;
 	if (!sdev) {
 		spin_unlock_irqrestore(q->queue_lock, flags);
 		err = SCSI_DH_NOSYS;
@@ -484,7 +484,7 @@ int scsi_dh_attach(struct request_queue *q, const char *name)
 		return -EINVAL;
 
 	spin_lock_irqsave(q->queue_lock, flags);
-	sdev = scsi_device_from_queue(q);
+	sdev = q->queuedata;
 	if (!sdev || !get_device(&sdev->sdev_gendev))
 		err = -ENODEV;
 	spin_unlock_irqrestore(q->queue_lock, flags);
@@ -513,7 +513,7 @@ void scsi_dh_detach(struct request_queue *q)
 	struct scsi_device_handler *scsi_dh = NULL;
 
 	spin_lock_irqsave(q->queue_lock, flags);
-	sdev = scsi_device_from_queue(q);
+	sdev = q->queuedata;
 	if (!sdev || !get_device(&sdev->sdev_gendev))
 		sdev = NULL;
 	spin_unlock_irqrestore(q->queue_lock, flags);

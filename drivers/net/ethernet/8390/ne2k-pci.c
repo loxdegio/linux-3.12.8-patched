@@ -55,7 +55,6 @@ static int options[MAX_UNITS];
 #include <asm/io.h>
 #include <asm/irq.h>
 #include <asm/uaccess.h>
-#include <xen/xen_pvonhvm.h>
 
 #include "8390.h"
 
@@ -136,7 +135,7 @@ static struct {
 };
 
 
-static DEFINE_PCI_DEVICE_TABLE(ne2k_pci_tbl) = {
+static const struct pci_device_id ne2k_pci_tbl[] = {
 	{ 0x10ec, 0x8029, PCI_ANY_ID, PCI_ANY_ID, 0, 0, CH_RealTek_RTL_8029 },
 	{ 0x1050, 0x0940, PCI_ANY_ID, PCI_ANY_ID, 0, 0, CH_Winbond_89C940 },
 	{ 0x11f6, 0x1401, PCI_ANY_ID, PCI_ANY_ID, 0, 0, CH_Compex_RL2000 },
@@ -725,9 +724,6 @@ static struct pci_driver ne2k_driver = {
 
 static int __init ne2k_pci_init(void)
 {
-	if (xen_pvonhvm_unplugged_nics)
-		return -EBUSY;
-
 /* when a module, this is printed whether or not devices are found in probe */
 #ifdef MODULE
 	printk(version);

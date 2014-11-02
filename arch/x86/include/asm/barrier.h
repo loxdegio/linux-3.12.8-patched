@@ -10,8 +10,7 @@
  * to devices.
  */
 
-#if defined(CONFIG_X86_XEN) ? CONFIG_XEN_COMPAT < 0x040300 \
-			    : defined(CONFIG_X86_32)
+#ifdef CONFIG_X86_32
 /*
  * Some non-Intel clones support out of order store. wmb() ceases to be a
  * nop for these.
@@ -100,7 +99,7 @@
 #if defined(CONFIG_X86_PPRO_FENCE)
 
 /*
- * For either of these options x86 doesn't have a strong TSO memory
+ * For this option x86 doesn't have a strong TSO memory
  * model and we should fall back to full barriers.
  */
 

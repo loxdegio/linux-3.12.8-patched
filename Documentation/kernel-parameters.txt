@@ -566,6 +566,17 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 			possible to determine what the correct size should be.
 			This option provides an override for these situations.
 
+	ca_keys=	[KEYS] This parameter identifies a specific key(s) on
+			the system trusted keyring to be used for certificate
+			trust validation.
+			format: { id:<keyid> | builtin }
+
+	cca=		[MIPS] Override the kernel pages' cache coherency
+			algorithm.  Accepted values range from 0 to 7
+			inclusive. See arch/mips/include/asm/pgtable-bits.h
+			for platform specific values (SB1, Loongson3 and
+			others).
+
 	ccw_timeout_log [S390]
 			See Documentation/s390/CommonIO for details.
 
@@ -663,8 +674,6 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 			in an oops report.
 			Range: 0 - 8192
 			Default: 64
-
-	hpet64		[X86-64,HPET] enable 64-bit mode of the HPET timer (bnc#456700)
 
 	com20020=	[HW,NET] ARCnet - COM20020 chipset
 			Format:
@@ -1099,6 +1108,12 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 			that can be changed at run time by the
 			set_graph_function file in the debugfs tracing directory.
 
+	ftrace_graph_notrace=[function-list]
+			[FTRACE] Do not trace from the functions specified in
+			function-list.  This list is a comma separated list of
+			functions that can be changed at run time by the
+			set_graph_notrace file in the debugfs tracing directory.
+
 	gamecon.map[2|3]=
 			[HW,JOY] Multisystem joystick and NES/SNES/PSX pad
 			support via parallel port (up to 5 devices per port)
@@ -1139,24 +1154,6 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 	grcan.rxsize=	[HW] Sets the size of the rx buffer.
 			Format: <unsigned int> such that (rxsize & ~0x1fffc0) == 0.
 			Default: 1024
-
-	guestdev=	[PCI,ACPI,XEN]
-			Format: {<device path>|<sbdf>}][,{<device path>|<sbdf>}[,...]]
-			Format of device path: <hid>[:<uid>]-<dev>.<func>[-<dev>.<func>[,...]][+iomul]
-			Format of sbdf: [<segment>:]<bus>:<dev>.<func>[+iomul]
-			Specifies PCI device for guest domain.
-			If PCI-PCI bridge is specified, all PCI devices
-			behind PCI-PCI bridge are reserved.
-			+iomul means that this PCI function will share
-			IO ports with other +iomul functions under same
-			switch. NOTE: if +iomul is specfied, all the functions
-			of the device will share IO ports.
-
-	guestiomuldev=	[PCI,ACPI,XEN]
-			Format: [sbd][,<sbd>][,...]
-			Format of sbdf: [<segment>:]<bus>:<dev>
-			Note: function shouldn't be specified.
-			Specifies PCI device for IO port multiplexing driver.
 
 	hashdist=	[KNL,NUMA] Large hashes allocated during boot
 			are distributed across NUMA nodes.  Defaults on
@@ -1333,6 +1330,23 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 			Formats: { "ima" | "ima-ng" }
 			Default: "ima-ng"
 
+	ima.ahash_minsize= [IMA] Minimum file size for asynchronous hash usage
+			Format: <min_file_size>
+			Set the minimal file size for using asynchronous hash.
+			If left unspecified, ahash usage is disabled.
+
+			ahash performance varies for different data sizes on
+			different crypto accelerators. This option can be used
+			to achieve the best performance for a particular HW.
+
+	ima.ahash_bufsize= [IMA] Asynchronous hash buffer size
+			Format: <bufsize>
+			Set hashing buffer size. Default: 4k.
+
+			ahash performance varies for different chunk sizes on
+			different crypto accelerators. This option can be used
+			to achieve best performance for particular HW.
+
 	init=		[KNL]
 			Format: <full_path>
 			Run specified binary instead of /sbin/init as init
@@ -1435,10 +1449,6 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 
 	ip=		[IP_PNP]
 			See Documentation/filesystems/nfs/nfsroot.txt.
-
-	ip2=		[HW] Set IO/IRQ pairs for up to 4 IntelliPort boards
-			See comment before ip2_setup() in
-			drivers/char/ip2/ip2base.c.
 
 	irqfixup	[HW]
 			When an interrupt is not handled search all handlers
@@ -1712,8 +1722,12 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 			7 (KERN_DEBUG)		debug-level messages
 
 	log_buf_len=n[KMG]	Sets the size of the printk ring buffer,
-			in bytes.  n must be a power of two.  The default
-			size is set in the kernel config file.
+			in bytes.  n must be a power of two and greater
+			than the minimal size. The minimal size is defined
+			by LOG_BUF_SHIFT kernel config parameter. There is
+			also CONFIG_LOG_CPU_MAX_BUF_SHIFT config parameter
+			that allows to increase the default size depending on
+			the number of CPUs. See init/Kconfig for more details.
 
 	logo.nologo	[FB] Disables display of the built-in Linux logo.
 			This may be used to provide more screen space for
@@ -2186,6 +2200,21 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 			and restore using xsave. The kernel will fallback to
 			enabling legacy floating-point and sse state.
 
+	noxsaveopt	[X86] Disables xsaveopt used in saving x86 extended
+			register states. The kernel will fall back to use
+			xsave to save the states. By using this parameter,
+			performance of saving the states is degraded because
+			xsave doesn't support modified optimization while
+			xsaveopt supports it on xsaveopt enabled systems.
+
+	noxsaves	[X86] Disables xsaves and xrstors used in saving and
+			restoring x86 extended register state in compacted
+			form of xsave area. The kernel will fall back to use
+			xsaveopt and xrstor to save and restore the states
+			in standard form of xsave area. By using this
+			parameter, xsave area per process might occupy more
+			memory on xsaves enabled systems.
+
 	eagerfpu=	[X86]
 			on	enable eager fpu restore
 			off	disable eager fpu restore
@@ -2603,13 +2632,6 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 				only look for one device below a PCIe downstream
 				port.
 
-	pci_reserve=	[PCI]
-			Format: [<sbdf>[+IO<size>][+MEM<size>]][,<sbdf>...]
-			Format of sbdf: [<segment>:]<bus>:<dev>.<func>
-			Specifies the least reserved io size or memory size
-			which is assigned to PCI bridge even when no child
-			pci device exists. This is useful with PCI hotplug.
-
 	pcie_aspm=	[PCIE] Forcibly enable or disable PCIe Active State Power
 			Management.
 		off	Disable ASPM.
@@ -2834,6 +2856,13 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 			quiescent states.  Units are jiffies, minimum
 			value is one, and maximum value is HZ.
 
+	rcutree.rcu_nocb_leader_stride= [KNL]
+			Set the number of NOCB kthread groups, which
+			defaults to the square root of the number of
+			CPUs.  Larger numbers reduces the wakeup overhead
+			on the per-CPU grace-period kthreads, but increases
+			that same overhead on each group's leader.
+
 	rcutree.qhimark= [KNL]
 			Set threshold of queued RCU callbacks beyond which
 			batch limiting is disabled.
@@ -2958,10 +2987,6 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 			Run specified binary instead of /init from the ramdisk,
 			used for early userspace startup. See initrd.
 
-	reassign_resources	[PCI,ACPI,XEN]
-			Use guestdev= parameter to reassign device's
-			resources, or specify =all here.
-
 	reboot=		[KNL]
 			Format (x86 or x86_64):
 				[w[arm] | c[old] | h[ard] | s[oft] | g[pio]] \
@@ -3053,6 +3078,13 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 	rw		[KNL] Mount root device read-write on boot
 
 	S		[KNL] Run init in single mode
+
+	s390_iommu=	[HW,S390]
+			Set s390 IOTLB flushing mode
+		strict
+			With strict flushing every unmap operation will result in
+			an IOTLB flush. Default is lazy flushing before reuse,
+			which is faster.
 
 	sa1100ir	[NET]
 			See drivers/net/irda/sa1100_ir.c.
@@ -3430,14 +3462,6 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 	unknown_nmi_panic
 			[X86] Cause panic on unknown NMI.
 
-	unsupported	Allow loading of unsupported kernel modules:
-			0 = only allow supported modules,
-			1 = warn when loading unsupported modules,
-			2 = don't warn.
-
-			CONFIG_SUSE_KERNEL_SUPPORTED must be enabled for this
-			to have any effect.
-
 	usbcore.authorized_default=
 			[USB] Default USB device authorization:
 			(default -1 = authorized except for wireless USB,
@@ -3498,6 +3522,8 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 					READ_DISC_INFO command);
 				e = NO_READ_CAPACITY_16 (don't use
 					READ_CAPACITY_16 command);
+				f = NO_REPORT_OPCODES (don't use report opcodes
+					command, uas only);
 				h = CAPACITY_HEURISTICS (decrease the
 					reported device capacity by one
 					sector if the number is odd);
@@ -3517,6 +3543,9 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 					bogus residue values);
 				s = SINGLE_LUN (the device has only one
 					Logical Unit);
+				t = NO_ATA_1X (don't allow ATA(12) and ATA(16)
+					commands, uas only);
+				u = IGNORE_UAS (don't bind to the uas driver);
 				w = NO_WP_DETECT (don't test whether the
 					medium is write-protected).
 			Example: quirks=0419:aaf5:rl,0421:0433:rc
@@ -3735,6 +3764,10 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 	xen_nopvspin	[X86,XEN]
 			Disables the ticketlock slowpath using Xen PV
 			optimizations.
+
+	xen_nopv	[X86]
+			Disables the PV optimizations forcing the HVM guest to
+			run as generic HVM guest with no PV drivers.
 
 	xirc2ps_cs=	[NET,PCMCIA]
 			Format:

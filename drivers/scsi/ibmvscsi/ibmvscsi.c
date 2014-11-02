@@ -95,16 +95,11 @@ static int fast_fail = 1;
 static int client_reserve = 1;
 static char partition_name[97] = "UNKNOWN";
 static unsigned int partition_number = -1;
-/*host data buffer size*/
-#define buff_size 4096
 
 static struct scsi_transport_template *ibmvscsi_transport_template;
 
 #define IBMVSCSI_VERSION "1.5.9"
 
-#define IBMVSCSI_PROC_NAME "ibmvscsi"
-/* The driver is named ibmvscsic, map ibmvscsi to module name */
-MODULE_ALIAS(IBMVSCSI_PROC_NAME);
 MODULE_DESCRIPTION("IBM Virtual SCSI");
 MODULE_AUTHOR("Dave Boutcher");
 MODULE_LICENSE("GPL");
@@ -2010,7 +2005,7 @@ static ssize_t show_host_srp_version(struct device *dev,
 	struct ibmvscsi_host_data *hostdata = shost_priv(shost);
 	int len;
 
-       len = snprintf(buf, buff_size, "%s\n",
+	len = snprintf(buf, PAGE_SIZE, "%s\n",
 		       hostdata->madapter_info.srp_version);
 	return len;
 }
@@ -2031,7 +2026,7 @@ static ssize_t show_host_partition_name(struct device *dev,
 	struct ibmvscsi_host_data *hostdata = shost_priv(shost);
 	int len;
 
-       len = snprintf(buf, buff_size, "%s\n",
+	len = snprintf(buf, PAGE_SIZE, "%s\n",
 		       hostdata->madapter_info.partition_name);
 	return len;
 }
@@ -2052,7 +2047,7 @@ static ssize_t show_host_partition_number(struct device *dev,
 	struct ibmvscsi_host_data *hostdata = shost_priv(shost);
 	int len;
 
-       len = snprintf(buf, buff_size, "%d\n",
+	len = snprintf(buf, PAGE_SIZE, "%d\n",
 		       hostdata->madapter_info.partition_number);
 	return len;
 }
@@ -2072,7 +2067,7 @@ static ssize_t show_host_mad_version(struct device *dev,
 	struct ibmvscsi_host_data *hostdata = shost_priv(shost);
 	int len;
 
-       len = snprintf(buf, buff_size, "%d\n",
+	len = snprintf(buf, PAGE_SIZE, "%d\n",
 		       hostdata->madapter_info.mad_version);
 	return len;
 }
@@ -2092,7 +2087,7 @@ static ssize_t show_host_os_type(struct device *dev,
 	struct ibmvscsi_host_data *hostdata = shost_priv(shost);
 	int len;
 
-       len = snprintf(buf, buff_size, "%d\n", hostdata->madapter_info.os_type);
+	len = snprintf(buf, PAGE_SIZE, "%d\n", hostdata->madapter_info.os_type);
 	return len;
 }
 
@@ -2111,7 +2106,7 @@ static ssize_t show_host_config(struct device *dev,
 	struct ibmvscsi_host_data *hostdata = shost_priv(shost);
 
 	/* returns null-terminated host config data */
-       if (ibmvscsi_do_host_config(hostdata, buf, buff_size) == 0)
+	if (ibmvscsi_do_host_config(hostdata, buf, PAGE_SIZE) == 0)
 		return strlen(buf);
 	else
 		return 0;
@@ -2143,7 +2138,7 @@ static struct device_attribute *ibmvscsi_attrs[] = {
 static struct scsi_host_template driver_template = {
 	.module = THIS_MODULE,
 	.name = "IBM POWER Virtual SCSI Adapter " IBMVSCSI_VERSION,
-	.proc_name = IBMVSCSI_PROC_NAME,
+	.proc_name = "ibmvscsi",
 	.queuecommand = ibmvscsi_queuecommand,
 	.eh_abort_handler = ibmvscsi_eh_abort_handler,
 	.eh_device_reset_handler = ibmvscsi_eh_device_reset_handler,
@@ -2411,7 +2406,7 @@ static struct vio_driver ibmvscsi_driver = {
 	.probe = ibmvscsi_probe,
 	.remove = ibmvscsi_remove,
 	.get_desired_dma = ibmvscsi_get_desired_dma,
-	.name = IBMVSCSI_PROC_NAME,
+	.name = "ibmvscsi",
 	.pm = &ibmvscsi_pm_ops,
 };
 

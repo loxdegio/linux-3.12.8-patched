@@ -131,9 +131,6 @@ endif
 
 obj-$(CONFIG_EPAPR_PARAVIRT)	+= epapr_paravirt.o epapr_hcalls.o
 obj-$(CONFIG_KVM_GUEST)		+= kvm.o kvm_emul.o
-ifeq ($(CONFIG_CPU_LITTLE_ENDIAN),y)
-obj-$(CONFIG_PPC_BOOK3S_64)	+= fake_ile.o
-endif
 
 # Disable GCOV in odd or sensitive code
 GCOV_PROFILE_prom_init.o := n
