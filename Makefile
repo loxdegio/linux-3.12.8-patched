@@ -1,6 +1,6 @@
 VERSION = 3
 PATCHLEVEL = 17
-SUBLEVEL = 2
+SUBLEVEL = 4
 EXTRAVERSION = -geek
 NAME = We All Live In A Yellow Penguin
 
@@ -377,7 +377,7 @@ CHECK		= sparse
 
 CHECKFLAGS     := -D__linux__ -Dlinux -D__STDC__ -Dunix -D__unix__ \
 		  -Wbitwise -Wno-return-void $(CF)
-OFLAGS			= -g0 -march=native -O2
+OFLAGS			= -g0 -march=native -O3
 		  
 CFLAGS_MODULE   = $(OFLAGS)
 AFLAGS_MODULE   = $(OFLAGS)

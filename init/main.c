@@ -544,7 +544,7 @@ asmlinkage __visible void __init start_kernel(void)
 				  static_command_line, __start___param,
 				  __stop___param - __start___param,
 				  -1, -1, &unknown_bootoption);
-	if (after_dashes)
+	if (!IS_ERR_OR_NULL(after_dashes))
 		parse_args("Setting init args", after_dashes, NULL, 0, -1, -1,
 			   set_init_arg);
 
@@ -805,7 +805,6 @@ int __init_or_module do_one_initcall(initcall_t fn)
 	return ret;
 }
 
-
 extern initcall_t __initcall_start[];
 extern initcall_t __initcall0_start[];
 extern initcall_t __initcall1_start[];
@@ -941,6 +940,8 @@ static int __ref kernel_init(void *unused)
 	numa_default_policy();
 
 	flush_delayed_fput();
+
+	print_scheduler_version();
 
 	if (ramdisk_execute_command) {
 		ret = run_init_process(ramdisk_execute_command);
