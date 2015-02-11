@@ -1,4 +1,4 @@
-linux-3.17.x-patched
+linux-3.18.x-patched
 ====================
 
 Versione del geek kernel con le patch scelte da me
