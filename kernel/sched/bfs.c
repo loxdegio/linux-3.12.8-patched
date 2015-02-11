@@ -91,22 +91,6 @@
 
 #include "bfs_sched.h"
 
-#ifdef smp_mb__before_atomic
-void __smp_mb__before_atomic(void)
-{
-	smp_mb__before_atomic();
-}
-EXPORT_SYMBOL(__smp_mb__before_atomic);
-#endif
-
-#ifdef smp_mb__after_atomic
-void __smp_mb__after_atomic(void)
-{
-	smp_mb__after_atomic();
-}
-EXPORT_SYMBOL(__smp_mb__after_atomic);
-#endif
-
 #define rt_prio(prio)		unlikely((prio) < MAX_RT_PRIO)
 #define rt_task(p)		rt_prio((p)->prio)
 #define rt_queue(rq)		rt_prio((rq)->rq_prio)
@@ -150,7 +134,7 @@ EXPORT_SYMBOL(__smp_mb__after_atomic);
 
 void print_scheduler_version(void)
 {
-	printk(KERN_INFO "BFS CPU scheduler v0.458 by Con Kolivas.\n");
+	printk(KERN_INFO "BFS CPU scheduler v0.460 by Con Kolivas.\n");
 }
 
 /*
@@ -216,7 +200,6 @@ struct global_rq {
 };
 
 #ifdef CONFIG_SMP
-
 /*
  * We add the notion of a root-domain which will be used to define per-domain
  * variables. Each exclusive cpuset essentially defines an island domain by
@@ -251,15 +234,14 @@ static struct root_domain def_root_domain;
 /* There can be only one */
 static struct global_rq grq;
 
-DEFINE_PER_CPU_SHARED_ALIGNED(struct rq, runqueues);
 static DEFINE_MUTEX(sched_hotcpu_mutex);
 
+DEFINE_PER_CPU_SHARED_ALIGNED(struct rq, runqueues);
 #ifdef CONFIG_SMP
 struct rq *cpu_rq(int cpu)
 {
 	return &per_cpu(runqueues, (cpu));
 }
-#define this_rq()		(&__get_cpu_var(runqueues))
 #define task_rq(p)		cpu_rq(task_cpu(p))
 #define cpu_curr(cpu)		(cpu_rq(cpu)->curr)
 /*
@@ -281,8 +263,6 @@ int __weak arch_sd_sibling_asym_packing(void)
 #endif /* CONFIG_SMP */
 
 static inline void update_rq_clock(struct rq *rq);
-static unsigned long long do_task_sched_runtime(struct task_struct *p);
-static u64 do_task_delta_exec(struct task_struct *p, struct rq *rq);
 
 /*
  * Sanity check should sched_clock return bogus values. We make sure it does
@@ -354,7 +334,6 @@ static inline void update_clocks(struct rq *rq)
 	grq.niffies += ndiff;
 }
 #endif
-#define raw_rq()	(&__raw_get_cpu_var(runqueues))
 
 #include "stats.h"
 
@@ -516,28 +495,6 @@ static inline void __task_grq_unlock(void)
 	grq_unlock();
 }
 
-/*
- * Look for any tasks *anywhere* that are running nice 0 or better. We do
- * this lockless for overhead reasons since the occasional wrong result
- * is harmless.
- */
-bool above_background_load(void)
-{
-	int cpu;
-
-	for_each_online_cpu(cpu) {
-		struct task_struct *cpu_curr = cpu_rq(cpu)->curr;
-
-		if (unlikely(!cpu_curr))
-			continue;
-		if (PRIO_TO_NICE(cpu_curr->static_prio) < 1) {
-			return true;
-		}
-	}
-	return false;
-}
-
-#ifndef __ARCH_WANT_UNLOCKED_CTXSW
 static inline void prepare_lock_switch(struct rq *rq, struct task_struct *next)
 {
 }
@@ -557,26 +514,6 @@ static inline void finish_lock_switch(struct rq *rq, struct task_struct *prev)
 
 	grq_unlock_irq();
 }
-
-#else /* __ARCH_WANT_UNLOCKED_CTXSW */
-
-static inline void prepare_lock_switch(struct rq *rq, struct task_struct *next)
-{
-#ifdef __ARCH_WANT_INTERRUPTS_ON_CTXSW
-	grq_unlock_irq();
-#else
-	grq_unlock();
-#endif
-}
-
-static inline void finish_lock_switch(struct rq *rq, struct task_struct *prev)
-{
-	smp_wmb();
-#ifndef __ARCH_WANT_INTERRUPTS_ON_CTXSW
-	local_irq_enable();
-#endif
-}
-#endif /* __ARCH_WANT_UNLOCKED_CTXSW */
 
 static inline bool deadline_before(u64 deadline, u64 time)
 {
@@ -1519,6 +1456,21 @@ ttwu_stat(struct task_struct *p, int cpu, int wake_flags)
 #endif /* CONFIG_SCHEDSTATS */
 }
 
+void wake_up_if_idle(int cpu)
+{
+	struct rq *rq = cpu_rq(cpu);
+	unsigned long flags;
+
+	if (!is_idle_task(rq->curr))
+		return;
+
+	grq_lock_irqsave(&flags);
+	if (likely(is_idle_task(rq->curr)))
+		smp_send_reschedule(cpu);
+	/* Else cpu is not in idle, do nothing here */
+	grq_unlock_irqrestore(&flags);
+}
+
 #ifdef CONFIG_SMP
 void scheduler_ipi(void)
 {
@@ -1966,10 +1918,6 @@ asmlinkage __visible void schedule_tail(struct task_struct *prev)
 	struct rq *rq = this_rq();
 
 	finish_task_switch(rq, prev);
-#ifdef __ARCH_WANT_UNLOCKED_CTXSW
-	/* In this case, finish_task_switch does not reenable preemption */
-	preempt_enable();
-#endif
 	if (current->set_child_tid)
 		put_user(task_pid_vnr(current), current->set_child_tid);
 }
@@ -2012,9 +1960,7 @@ context_switch(struct rq *rq, struct task_struct *prev,
 	 * of the scheduler it's an obvious special-case), so we
 	 * do an early lockdep release here:
 	 */
-#ifndef __ARCH_WANT_UNLOCKED_CTXSW
 	spin_release(&grq.lock.dep_map, 1, _THIS_IP_);
-#endif
 
 	/* Here we just switch the register state and the stack. */
 	context_tracking_task_switch(prev, next);
@@ -2054,6 +2000,18 @@ static unsigned long nr_uninterruptible(void)
 		nu = 0;
 	return nu;
 }
+
+/*
+ * Check if only the current task is running on the cpu.
+ */
+bool single_task_running(void)
+{
+	if (cpu_rq(smp_processor_id())->soft_affined == 1)
+		return true;
+	else
+		return false;
+}
+EXPORT_SYMBOL(single_task_running);
 
 unsigned long long nr_context_switches(void)
 {
@@ -2378,27 +2336,29 @@ void thread_group_cputime(struct task_struct *tsk, struct task_cputime *times)
 	struct signal_struct *sig = tsk->signal;
 	cputime_t utime, stime;
 	struct task_struct *t;
+	unsigned int seq, nextseq;
 	unsigned long flags;
 
-	times->utime = sig->utime;
-	times->stime = sig->stime;
-	times->sum_exec_runtime = sig->sum_sched_runtime;
-
 	rcu_read_lock();
-	/* make sure we can trust tsk->thread_group list */
-	if (!likely(pid_alive(tsk)))
-		goto out;
-
-	t = tsk;
-	grq_lock_irqsave(&flags);
+	/* Attempt a lockless read on the first round. */
+	nextseq = 0;
 	do {
-		task_cputime(t, &utime, &stime);
-		times->utime += utime;
-		times->stime += stime;
-		times->sum_exec_runtime += do_task_sched_runtime(t);
-	} while_each_thread(tsk, t);
-	grq_unlock_irqrestore(&flags);
-out:
+		seq = nextseq;
+		flags = read_seqbegin_or_lock_irqsave(&sig->stats_lock, &seq);
+		times->utime = sig->utime;
+		times->stime = sig->stime;
+		times->sum_exec_runtime = sig->sum_sched_runtime;
+
+		for_each_thread(tsk, t) {
+			task_cputime(t, &utime, &stime);
+			times->utime += utime;
+			times->stime += stime;
+			times->sum_exec_runtime += task_sched_runtime(t);
+		}
+		/* If lockless access failed, take the lock. */
+		nextseq = 1;
+	} while (need_seqretry(&sig->stats_lock, seq));
+	done_seqretry_irqrestore(&sig->stats_lock, seq, flags);
 	rcu_read_unlock();
 }
 
@@ -2606,7 +2566,7 @@ ts_account:
  *
  * Called with task_grq_lock() held.
  */
-static u64 do_task_delta_exec(struct task_struct *p, struct rq *rq)
+static inline u64 do_task_delta_exec(struct task_struct *p, struct rq *rq)
 {
 	u64 ns = 0;
 
@@ -2621,53 +2581,6 @@ static u64 do_task_delta_exec(struct task_struct *p, struct rq *rq)
 		if (unlikely((s64)ns < 0))
 			ns = 0;
 	}
-
-	return ns;
-}
-
-unsigned long long task_delta_exec(struct task_struct *p)
-{
-	unsigned long flags;
-	struct rq *rq;
-	u64 ns;
-
-	rq = task_grq_lock(p, &flags);
-	ns = do_task_delta_exec(p, rq);
-	task_grq_unlock(&flags);
-
-	return ns;
-}
-
-/*
- * Return accounted runtime for the task.
- * Return separately the current's pending runtime that have not been
- * accounted yet.
- *
- * grq lock already acquired.
- */
-unsigned long long do_task_sched_runtime(struct task_struct *p)
-{
-	struct rq *rq;
-	u64 ns;
-
-#if defined(CONFIG_64BIT) && defined(CONFIG_SMP)
-	/*
-	 * 64-bit doesn't need locks to atomically read a 64bit value.
-	 * So we have a optimisation chance when the task's delta_exec is 0.
-	 * Reading ->on_cpu is racy, but this is ok.
-	 *
-	 * If we race with it leaving cpu, we'll take a lock. So we're correct.
-	 * If we race with it entering cpu, unaccounted time is 0. This is
-	 * indistinguishable from the read occurring a few cycles earlier.
-	 * If we see ->on_cpu without ->on_rq, the task is leaving, and has
-	 * been accounted, so we're correct here as well.
-	 */
-	if (!p->on_cpu || !p->on_rq)
-		return p->sched_time;
-#endif
-
-	rq = task_rq(p);
-	ns = p->sched_time + do_task_delta_exec(p,rq);
 
 	return ns;
 }
@@ -3307,6 +3220,9 @@ static noinline void __schedule_bug(struct task_struct *prev)
  */
 static inline void schedule_debug(struct task_struct *prev)
 {
+#ifdef CONFIG_SCHED_STACK_END_CHECK
+	BUG_ON(unlikely(task_stack_end_corrupted(prev)));
+#endif
 	/*
 	 * Test if we are atomic. Since do_exit() needs to call into
 	 * schedule() atomically, we ignore that path. Otherwise whine
@@ -3440,7 +3356,7 @@ static void wake_smt_siblings(int __maybe_unused cpu) {}
  *          - return from syscall or exception to user-space
  *          - return from interrupt-handler to user-space
  */
-asmlinkage __visible void __sched schedule(void)
+static void __sched __schedule(void)
 {
 	struct task_struct *prev, *next, *idle;
 	unsigned long *switch_count;
@@ -3494,17 +3410,6 @@ need_resched:
 			}
 		}
 		switch_count = &prev->nvcsw;
-	}
-
-	/*
-	 * If we are going to sleep and we have plugged IO queued, make
-	 * sure to submit it to avoid deadlocks.
-	 */
-	if (unlikely(deactivate && blk_needs_flush_plug(prev))) {
-		grq_unlock_irq();
-		preempt_enable_no_resched();
-		blk_schedule_flush_plug(prev);
-		goto need_resched;
 	}
 
 	update_clocks(rq);
@@ -3605,9 +3510,29 @@ rerun_prev_unlocked:
 	if (unlikely(need_resched()))
 		goto need_resched;
 }
+
+static inline void sched_submit_work(struct task_struct *tsk)
+{
+	if (!tsk->state || tsk_is_pi_blocked(tsk))
+		return;
+	/*
+	 * If we are going to sleep and we have plugged IO queued,
+	 * make sure to submit it to avoid deadlocks.
+	 */
+	if (blk_needs_flush_plug(tsk))
+		blk_schedule_flush_plug(tsk);
+}
+
+asmlinkage __visible void __sched schedule(void)
+{
+	struct task_struct *tsk = current;
+
+	sched_submit_work(tsk);
+	__schedule();
+}
 EXPORT_SYMBOL(schedule);
 
-#ifdef CONFIG_RCU_USER_QS
+#ifdef CONFIG_CONTEXT_TRACKING
 asmlinkage __visible void __sched schedule_user(void)
 {
 	/*
@@ -3615,10 +3540,14 @@ asmlinkage __visible void __sched schedule_user(void)
 	 * or we have been woken up remotely but the IPI has not yet arrived,
 	 * we haven't yet exited the RCU idle mode. Do it here manually until
 	 * we find a better solution.
+	 *
+	 * NB: There are buggy callers of this function.  Ideally we
+	 * should warn if prev_state != IN_USER, but that will trigger
+	 * too frequently to make sense yet.
 	 */
-	user_exit();
+	enum ctx_state prev_state = exception_enter();
 	schedule();
-	user_enter();
+	exception_exit(prev_state);
 }
 #endif
 
@@ -3663,6 +3592,47 @@ asmlinkage __visible void __sched notrace preempt_schedule(void)
 }
 NOKPROBE_SYMBOL(preempt_schedule);
 EXPORT_SYMBOL(preempt_schedule);
+
+#ifdef CONFIG_CONTEXT_TRACKING
+/**
+ * preempt_schedule_context - preempt_schedule called by tracing
+ *
+ * The tracing infrastructure uses preempt_enable_notrace to prevent
+ * recursion and tracing preempt enabling caused by the tracing
+ * infrastructure itself. But as tracing can happen in areas coming
+ * from userspace or just about to enter userspace, a preempt enable
+ * can occur before user_exit() is called. This will cause the scheduler
+ * to be called when the system is still in usermode.
+ *
+ * To prevent this, the preempt_enable_notrace will use this function
+ * instead of preempt_schedule() to exit user context if needed before
+ * calling the scheduler.
+ */
+asmlinkage __visible void __sched notrace preempt_schedule_context(void)
+{
+	enum ctx_state prev_ctx;
+
+	if (likely(!preemptible()))
+		return;
+
+	do {
+		__preempt_count_add(PREEMPT_ACTIVE);
+		/*
+		 * Needs preempt disabled in case user_exit() is traced
+		 * and the tracer calls preempt_enable_notrace() causing
+		 * an infinite recursion.
+		 */
+		prev_ctx = exception_enter();
+		__schedule();
+		exception_exit(prev_ctx);
+
+		__preempt_count_sub(PREEMPT_ACTIVE);
+		barrier();
+	} while (need_resched());
+}
+EXPORT_SYMBOL_GPL(preempt_schedule_context);
+#endif /* CONFIG_CONTEXT_TRACKING */
+
 #endif /* CONFIG_PREEMPT */
 
 /*
@@ -4830,7 +4800,7 @@ int __sched yield_to(struct task_struct *p, bool preempt)
 	rq->rq_time_slice = 0;
 	if (p->time_slice > timeslice())
 		p->time_slice = timeslice();
-	if (preempt && rq != rq)
+	if (preempt && rq != p_rq)
 		resched_curr(p_rq);
 out_unlock:
 	grq_unlock_irqrestore(&flags);
@@ -5026,7 +4996,7 @@ void show_state_filter(unsigned long state_filter)
 		"  task                        PC stack   pid father\n");
 #endif
 	rcu_read_lock();
-	do_each_thread(g, p) {
+	for_each_process_thread(g, p) {
 		/*
 		 * reset the NMI-timeout, listing all files on a slow
 		 * console might take a lot of time:
@@ -5034,7 +5004,7 @@ void show_state_filter(unsigned long state_filter)
 		touch_nmi_watchdog();
 		if (!state_filter || (p->state & state_filter))
 			sched_show_task(p);
-	} while_each_thread(g, p);
+	}
 
 	touch_all_softlockup_watchdogs();
 
@@ -7139,15 +7109,12 @@ void normalize_rt_tasks(void)
 	struct rq *rq;
 	int queued;
 
-	read_lock_irqsave(&tasklist_lock, flags);
-
-	do_each_thread(g, p) {
+	read_lock(&tasklist_lock);
+	for_each_process_thread(g, p) {
 		if (!rt_task(p) && !iso_task(p))
 			continue;
 
-		raw_spin_lock(&p->pi_lock);
-		rq = __task_grq_lock(p);
-
+		rq = task_grq_lock(p, &flags);
 		queued = task_queued(p);
 		if (queued)
 			dequeue_task(p);
@@ -7157,11 +7124,9 @@ void normalize_rt_tasks(void)
 			try_preempt(p, rq);
 		}
 
-		__task_grq_unlock();
-		raw_spin_unlock(&p->pi_lock);
-	} while_each_thread(g, p);
-
-	read_unlock_irqrestore(&tasklist_lock, flags);
+		task_grq_unlock(&flags);
+	}
+	read_unlock(&tasklist_lock);
 }
 #endif /* CONFIG_MAGIC_SYSRQ */
 

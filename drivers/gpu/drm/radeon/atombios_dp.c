@@ -234,8 +234,8 @@ void radeon_dp_aux_init(struct radeon_connector *radeon_connector)
 
 /***** general DP utility functions *****/
 
-#define DP_VOLTAGE_MAX         DP_TRAIN_VOLTAGE_SWING_1200
-#define DP_PRE_EMPHASIS_MAX    DP_TRAIN_PRE_EMPHASIS_9_5
+#define DP_VOLTAGE_MAX         DP_TRAIN_VOLTAGE_SWING_LEVEL_3
+#define DP_PRE_EMPHASIS_MAX    DP_TRAIN_PRE_EMPH_LEVEL_3
 
 static void dp_get_adjust_train(u8 link_status[DP_LINK_STATUS_SIZE],
 				int lane_count,
@@ -491,6 +491,10 @@ int radeon_dp_mode_valid_helper(struct drm_connector *connector,
 	struct radeon_connector *radeon_connector = to_radeon_connector(connector);
 	struct radeon_connector_atom_dig *dig_connector;
 	int dp_clock;
+
+	if ((mode->clock > 340000) &&
+	    (!radeon_connector_is_dp12_capable(connector)))
+		return MODE_CLOCK_HIGH;
 
 	if (!radeon_connector->con_priv)
 		return MODE_CLOCK_HIGH;

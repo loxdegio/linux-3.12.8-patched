@@ -1,4 +1,5 @@
 #include <linux/sched.h>
+#include <linux/cpuidle.h>
 
 #ifndef BFS_SCHED_H
 #define BFS_SCHED_H
@@ -80,6 +81,10 @@ struct rq {
 	unsigned int ttwu_count;
 	unsigned int ttwu_local;
 #endif /* CONFIG_SCHEDSTATS */
+#ifdef CONFIG_CPU_IDLE
+	/* Must be inspected within a rcu lock section */
+	struct cpuidle_state *idle_state;
+#endif
 };
 
 #ifdef CONFIG_SMP
@@ -90,8 +95,13 @@ struct rq *cpu_rq(int cpu);
 static struct rq *uprq;
 #define cpu_rq(cpu)	(uprq)
 #define this_rq()	(uprq)
+#define raw_rq()	(uprq)
 #define task_rq(p)	(uprq)
 #define cpu_curr(cpu)	((uprq)->curr)
+#else /* CONFIG_SMP */
+DECLARE_PER_CPU_SHARED_ALIGNED(struct rq, runqueues);
+#define this_rq()		this_cpu_ptr(&runqueues)
+#define raw_rq()		raw_cpu_ptr(&runqueues)
 #endif /* CONFIG_SMP */
 
 static inline u64 rq_clock(struct rq *rq)
@@ -120,4 +130,32 @@ static inline u64 rq_clock_task(struct rq *rq)
 
 static inline void sched_ttwu_pending(void) { }
 
+static inline int task_on_rq_queued(struct task_struct *p)
+{
+	return p->on_rq;
+}
+
+#ifdef CONFIG_CPU_IDLE
+static inline void idle_set_state(struct rq *rq,
+				  struct cpuidle_state *idle_state)
+{
+	rq->idle_state = idle_state;
+}
+
+static inline struct cpuidle_state *idle_get_state(struct rq *rq)
+{
+	WARN_ON(!rcu_read_lock_held());
+	return rq->idle_state;
+}
+#else
+static inline void idle_set_state(struct rq *rq,
+				  struct cpuidle_state *idle_state)
+{
+}
+
+static inline struct cpuidle_state *idle_get_state(struct rq *rq)
+{
+	return NULL;
+}
 #endif
+#endif /* BFS_SCHED_H */

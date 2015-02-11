@@ -481,7 +481,7 @@ static void ctr_crypt_final(struct crypto_aes_ctx *ctx,
 	crypto_inc(ctrblk, AES_BLOCK_SIZE);
 }
 
-#if 0	/* temporary disabled due to failing crypto tests */
+#ifdef CONFIG_AS_AVX
 static void aesni_ctr_enc_avx_tfm(struct crypto_aes_ctx *ctx, u8 *out,
 			      const u8 *in, unsigned int len, u8 *iv)
 {
@@ -1522,7 +1522,7 @@ static int __init aesni_init(void)
 		aesni_gcm_dec_tfm = aesni_gcm_dec;
 	}
 	aesni_ctr_enc_tfm = aesni_ctr_enc;
-#if 0	/* temporary disabled due to failing crypto tests */
+#ifdef CONFIG_AS_AVX
 	if (cpu_has_avx) {
 		/* optimize performance of ctr mode encryption transform */
 		aesni_ctr_enc_tfm = aesni_ctr_enc_avx_tfm;
@@ -1550,4 +1550,4 @@ module_exit(aesni_exit);
 
 MODULE_DESCRIPTION("Rijndael (AES) Cipher Algorithm, Intel AES-NI instructions optimized");
 MODULE_LICENSE("GPL");
-MODULE_ALIAS("aes");
+MODULE_ALIAS_CRYPTO("aes");

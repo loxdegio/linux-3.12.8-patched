@@ -28,30 +28,6 @@ config BUILDTIME_EXTABLE_SORT
 
 menu "General setup"
 
-config ZEN_INTERACTIVE
-	bool "Tune kernel for interactivity"
-	default y
-	help
-	  Tunes the kernel for responsiveness at the cost of throughput and power usage.
-
-	  --- VM ---
-	    Mem dirty before bg writeback..: 10 %  -> 20 %
-	    Mem dirty before sync writeback: 20 %  -> 50 %
-
-	  --- CPU Scheduler (CFS) ---
-	    Scheduling latency.............:  6    ->  3    ms
-	    Minimal granularity............:  0.75 ->  0.3  ms
-	    Wakeup granularity.............:  1    ->  0.5  ms
-	    CPU migration cost.............:  0.5  ->  0.25 ms
-	    Bandwidth slice size...........:  5    ->  3    ms
-
-	  --- CPU Scheduler (BFS) ---
-	    Scheduling interval............:  6    ->  3    ms
-	    ISO task max realtime use......: 70 %  -> 30 %
-
-	  --- CPU Frequency Scaling ---
-	    Ondemand down scaling factor...:  1    -> 10
-
 config SCHED_BFS
 	bool "BFS cpu scheduler"
 	default n
@@ -74,6 +50,30 @@ config SCHED_BFS_AUTOISO
 	  as SCHED_ISO.
 
 	  Tasks (including X) can be run as sched_iso manually using schedtool.
+
+config ZEN_INTERACTIVE
+	bool "Tune kernel for interactivity"
+	default y
+	help
+	  Tunes the kernel for responsiveness at the cost of throughput and power usage.
+
+	  --- VM ---
+	    Mem dirty before bg writeback..: 10 %  -> 20 %
+	    Mem dirty before sync writeback: 20 %  -> 50 %
+
+	  --- CPU Scheduler (CFS) ---
+	    Scheduling latency.............:  6    ->  3    ms
+	    Minimal granularity............:  0.75 ->  0.3  ms
+	    Wakeup granularity.............:  1    ->  0.5  ms
+	    CPU migration cost.............:  0.5  ->  0.25 ms
+	    Bandwidth slice size...........:  5    ->  3    ms
+
+	  --- CPU Scheduler (BFS) ---
+	    Scheduling interval............:  6    ->  3    ms
+	    ISO task max realtime use......: 70 %  -> 25 %
+
+	  --- CPU Frequency Scaling ---
+	    Ondemand down scaling factor...:  1    -> 10
 
 config BROKEN
 	bool
@@ -555,6 +555,16 @@ config PREEMPT_RCU
 	  This option enables preemptible-RCU code that is common between
 	  TREE_PREEMPT_RCU and, in the old days, TINY_PREEMPT_RCU.
 
+config TASKS_RCU
+	bool "Task_based RCU implementation using voluntary context switch"
+	default n
+	help
+	  This option enables a task-based RCU implementation that uses
+	  only voluntary context switch (not preemption!), idle, and
+	  user-mode execution as quiescent states.
+
+	  If unsure, say N.
+
 config RCU_STALL_COMMON
 	def_bool ( TREE_RCU || TREE_PREEMPT_RCU || RCU_TRACE )
 	help
@@ -785,7 +795,7 @@ choice
 
 config RCU_NOCB_CPU_NONE
 	bool "No build_forced no-CBs CPUs"
-	depends on RCU_NOCB_CPU && !NO_HZ_FULL_ALL
+	depends on RCU_NOCB_CPU
 	help
 	  This option does not force any of the CPUs to be no-CBs CPUs.
 	  Only CPUs designated by the rcu_nocbs= boot parameter will be
@@ -799,7 +809,7 @@ config RCU_NOCB_CPU_NONE
 
 config RCU_NOCB_CPU_ZERO
 	bool "CPU 0 is a build_forced no-CBs CPU"
-	depends on RCU_NOCB_CPU && !NO_HZ_FULL_ALL
+	depends on RCU_NOCB_CPU
 	help
 	  This option forces CPU 0 to be a no-CBs CPU, so that its RCU
 	  callbacks are invoked by a per-CPU kthread whose name begins
@@ -876,6 +886,7 @@ config LOG_BUF_SHIFT
 
 config LOG_CPU_MAX_BUF_SHIFT
 	int "CPU kernel log buffer size contribution (13 => 8 KB, 17 => 128KB)"
+	depends on SMP
 	range 0 21
 	default 12 if !BASE_SMALL
 	default 0 if BASE_SMALL
@@ -936,17 +947,6 @@ config ARCH_SUPPORTS_INT128
 #
 config ARCH_WANT_NUMA_VARIABLE_LOCALITY
 	bool
-
-#
-# For architectures that are willing to define _PAGE_NUMA as _PAGE_PROTNONE
-config ARCH_WANTS_PROT_NUMA_PROT_NONE
-	bool
-
-config ARCH_USES_NUMA_PROT_NONE
-	bool
-	default y
-	depends on ARCH_WANTS_PROT_NUMA_PROT_NONE
-	depends on NUMA_BALANCING
 
 config NUMA_BALANCING_DEFAULT_ENABLED
 	bool "Automatically enable NUMA aware memory/task placement"
@@ -1393,6 +1393,10 @@ config SYSCTL_ARCH_UNALIGN_ALLOW
 config HAVE_PCSPKR_PLATFORM
 	bool
 
+# interpreter that classic socket filters depend on
+config BPF
+	bool
+
 menuconfig EXPERT
 	bool "Configure standard kernel features (expert users)"
 	# Unhide debug options, to make the on-by-default options visible
@@ -1573,6 +1577,16 @@ config EVENTFD
 
 	  If unsure, say Y.
 
+# syscall, maps, verifier
+config BPF_SYSCALL
+	bool "Enable bpf() system call" if EXPERT
+	select ANON_INODES
+	select BPF
+	default n
+	help
+	  Enable the bpf() system call that allows to manipulate eBPF
+	  programs and maps via file descriptors.
+
 config SHMEM
 	bool "Use full shmem filesystem" if EXPERT
 	default y
@@ -1591,6 +1605,16 @@ config AIO
 	  This option enables POSIX asynchronous I/O which may by used
 	  by some high performance threaded applications. Disabling
 	  this option saves about 7k.
+
+config ADVISE_SYSCALLS
+	bool "Enable madvise/fadvise syscalls" if EXPERT
+	default y
+	help
+	  This option enables the madvise and fadvise syscalls, used by
+	  applications to advise the kernel about their future memory or file
+	  usage, improving performance. If building an embedded system where no
+	  applications use these syscalls, you can disable this option to save
+	  space.
 
 config PCI_QUIRKS
 	default y
@@ -1961,6 +1985,49 @@ config MODULE_SIG_HASH
 	default "sha256" if MODULE_SIG_SHA256
 	default "sha384" if MODULE_SIG_SHA384
 	default "sha512" if MODULE_SIG_SHA512
+
+config MODULE_COMPRESS
+	bool "Compress modules on installation"
+	depends on MODULES
+	help
+	  This option compresses the kernel modules when 'make
+	  modules_install' is run.
+
+	  The modules will be compressed either using gzip or xz depend on the
+	  choice made in "Compression algorithm".
+
+	  module-init-tools has support for gzip format while kmod handle gzip
+	  and xz compressed modules.
+
+	  When a kernel module is installed from outside of the main kernel
+	  source and uses the Kbuild system for installing modules then that
+	  kernel module will also be compressed when it is installed.
+
+	  This option provides little benefit when the modules are to be used inside
+	  an initrd or initramfs, it generally is more efficient to compress the whole
+	  initrd or initramfs instead.
+
+	  This is fully compatible with signed modules while the signed module is
+	  compressed. module-init-tools or kmod handles decompression and provide to
+	  other layer the uncompressed but signed payload.
+
+choice
+	prompt "Compression algorithm"
+	depends on MODULE_COMPRESS
+	default MODULE_COMPRESS_GZIP
+	help
+	  This determines which sort of compression will be used during
+	  'make modules_install'.
+
+	  GZIP (default) and XZ are supported.
+
+config MODULE_COMPRESS_GZIP
+	bool "GZIP"
+
+config MODULE_COMPRESS_XZ
+	bool "XZ"
+
+endchoice
 
 endif # MODULES
 

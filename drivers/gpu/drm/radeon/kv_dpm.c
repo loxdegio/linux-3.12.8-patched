@@ -2745,13 +2745,11 @@ int kv_dpm_init(struct radeon_device *rdev)
 	pi->enable_auto_thermal_throttling = true;
 	pi->disable_nb_ps3_in_battery = false;
 	if (radeon_bapm == -1) {
-		/* There are stability issues reported on with
-		 * bapm enabled on an asrock system.
-		 */
-		if (rdev->pdev->subsystem_vendor == 0x1849)
-			pi->bapm_enable = false;
-		else
+		/* only enable bapm on KB, ML by default */
+		if (rdev->family == CHIP_KABINI || rdev->family == CHIP_MULLINS)
 			pi->bapm_enable = true;
+		else
+			pi->bapm_enable = false;
 	} else if (radeon_bapm == 0) {
 		pi->bapm_enable = false;
 	} else {
@@ -2800,6 +2798,8 @@ void kv_dpm_debugfs_print_current_performance_level(struct radeon_device *rdev,
 		tmp = (RREG32_SMC(SMU_VOLTAGE_STATUS) & SMU_VOLTAGE_CURRENT_LEVEL_MASK) >>
 			SMU_VOLTAGE_CURRENT_LEVEL_SHIFT;
 		vddc = kv_convert_8bit_index_to_voltage(rdev, (u16)tmp);
+		seq_printf(m, "uvd    %sabled\n", pi->uvd_power_gated ? "dis" : "en");
+		seq_printf(m, "vce    %sabled\n", pi->vce_power_gated ? "dis" : "en");
 		seq_printf(m, "power level %d    sclk: %u vddc: %u\n",
 			   current_index, sclk, vddc);
 	}
