@@ -14,7 +14,7 @@ If you want to download and keep upgraded this repo type on terminal:
 git clone https://github.com/loxdegio/linux-patched
 
 
-COMPILATION INSTRUCTIONS
+BUILD INSTRUCTIONS
 ========================
 
 * If you have Debian, Ubuntu, Mint or other Debian-based distro follow the Debian-way:
