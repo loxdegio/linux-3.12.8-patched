@@ -1,6 +1,6 @@
 VERSION = 3
 PATCHLEVEL = 18
-SUBLEVEL = 6
+SUBLEVEL = 7
 EXTRAVERSION = -geek
 NAME = The Holey Teapot
 
@@ -371,8 +371,8 @@ CHECK		= sparse
 
 CHECKFLAGS     := -D__linux__ -Dlinux -D__STDC__ -Dunix -D__unix__ \
 		  -Wbitwise -Wno-return-void $(CF)
-OFLAGS			= -g0 -march=native -O2
-
+OFLAGS			= -g0 -march=native -O2  
+		
 CFLAGS_MODULE   = $(OFLAGS)
 AFLAGS_MODULE   = $(OFLAGS)
 LDFLAGS_MODULE  =
