@@ -1,6 +1,6 @@
 VERSION = 3
 PATCHLEVEL = 18
-SUBLEVEL = 8
+SUBLEVEL = 9
 EXTRAVERSION = -geek
 NAME = The Holey Teapot
 
@@ -352,16 +352,16 @@ $(srctree)/scripts/Kbuild.include: ;
 include $(srctree)/scripts/Kbuild.include
 
 # Make variables (CC, etc...)
-AS			= $(CROSS_COMPILE)as
-LD			= $(CROSS_COMPILE)ld
-CC			= $(CROSS_COMPILE)gcc
-CPP			= $(CC) -E
-AR			= $(CROSS_COMPILE)ar
-NM			= $(CROSS_COMPILE)nm
+AS		= $(CROSS_COMPILE)as
+LD		= $(CROSS_COMPILE)ld
+CC		= $(CROSS_COMPILE)gcc
+CPP		= $(CC) -E
+AR		= $(CROSS_COMPILE)ar
+NM		= $(CROSS_COMPILE)nm
 STRIP		= $(CROSS_COMPILE)strip
 OBJCOPY		= $(CROSS_COMPILE)objcopy
 OBJDUMP		= $(CROSS_COMPILE)objdump
-AWK			= awk
+AWK		= awk
 GENKSYMS	= scripts/genksyms/genksyms
 INSTALLKERNEL  := installkernel
 DEPMOD		= /sbin/depmod
@@ -372,7 +372,7 @@ CHECK		= sparse
 CHECKFLAGS     := -D__linux__ -Dlinux -D__STDC__ -Dunix -D__unix__ \
 		  -Wbitwise -Wno-return-void $(CF)
 OFLAGS			= -g0 -march=native -O2
-		  
+
 CFLAGS_MODULE   = $(OFLAGS)
 AFLAGS_MODULE   = $(OFLAGS)
 LDFLAGS_MODULE  =
