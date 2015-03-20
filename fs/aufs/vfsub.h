@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2005-2014 Junjiro R. Okajima
+ * Copyright (C) 2005-2015 Junjiro R. Okajima
  */
 
 /*
@@ -147,15 +147,6 @@ ssize_t vfsub_write_k(struct file *file, void *kbuf, size_t count,
 		      loff_t *ppos);
 int vfsub_flush(struct file *file, fl_owner_t id);
 int vfsub_iterate_dir(struct file *file, struct dir_context *ctx);
-
-/* just for type-check */
-static inline filldir_t au_diractor(int (*func)(struct dir_context *,
-						const char *, int, loff_t, u64,
-						unsigned))
-{
-	return (filldir_t)func;
-}
-
 
 static inline loff_t vfsub_f_size_read(struct file *file)
 {

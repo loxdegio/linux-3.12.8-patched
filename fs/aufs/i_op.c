@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2005-2014 Junjiro R. Okajima
+ * Copyright (C) 2005-2015 Junjiro R. Okajima
  */
 
 /*
@@ -200,15 +200,6 @@ static struct dentry *aufs_lookup(struct inode *dir, struct dentry *dentry,
 	if (inode)
 		atomic_inc(&inode->i_count);
 	ret = d_splice_alias(inode, dentry);
-	if (IS_ERR(ret)
-	    && PTR_ERR(ret) == -EIO
-	    && inode
-	    && S_ISDIR(inode->i_mode)) {
-		atomic_inc(&inode->i_count);
-		ret = d_materialise_unique(dentry, inode);
-		if (!IS_ERR(ret))
-			ii_write_unlock(inode);
-	}
 #if 0
 	if (unlikely(d_need_lookup(dentry))) {
 		spin_lock(&dentry->d_lock);
@@ -217,9 +208,11 @@ static struct dentry *aufs_lookup(struct inode *dir, struct dentry *dentry,
 	} else
 #endif
 	if (inode) {
-		if (!IS_ERR(ret))
+		if (!IS_ERR(ret)) {
 			iput(inode);
-		else {
+			if (ret && ret != dentry)
+				ii_write_unlock(inode);
+		} else {
 			ii_write_unlock(inode);
 			iput(inode);
 			inode = NULL;
@@ -631,11 +624,11 @@ int au_pin_and_icpup(struct dentry *dentry, struct iattr *ia,
 		.flags		= 0
 	};
 
-	bstart = au_dbstart(dentry);
-	inode = dentry->d_inode;
-	if (S_ISDIR(inode->i_mode))
+	if (d_is_dir(dentry))
 		au_fset_wrdir(wr_dir_args.flags, ISDIR);
 	/* plink or hi_wh() case */
+	bstart = au_dbstart(dentry);
+	inode = dentry->d_inode;
 	ibstart = au_ibstart(inode);
 	if (bstart != ibstart && !au_test_ro(inode->i_sb, ibstart, inode))
 		wr_dir_args.force_btgt = ibstart;

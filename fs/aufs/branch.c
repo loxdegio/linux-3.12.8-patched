@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2005-2014 Junjiro R. Okajima
+ * Copyright (C) 2005-2015 Junjiro R. Okajima
  */
 
 /*
@@ -524,7 +524,7 @@ int au_br_add(struct super_block *sb, struct au_opt_add *add, int remount)
 	    && au_br_writable(add_branch->br_perm)
 	    && !au_test_fs_bad_xino(h_dentry->d_sb)
 	    && add_branch->br_xino.xi_file
-	    && add_branch->br_xino.xi_file->f_dentry->d_parent == h_dentry)
+	    && add_branch->br_xino.xi_file->f_path.dentry->d_parent == h_dentry)
 		au_xino_brid_set(sb, add_branch->br_id);
 
 out:
@@ -627,7 +627,7 @@ static int test_dentry_busy(struct dentry *root, aufs_bindex_t bindex,
 		ndentry = dpage->ndentry;
 		for (j = 0; !err && j < ndentry; j++) {
 			d = dpage->dentries[j];
-			AuDebugOn(!d_count(d));
+			AuDebugOn(au_dcount(d) <= 0);
 			if (!au_digen_test(d, sigen)) {
 				di_read_lock_child(d, AuLock_IR);
 				if (unlikely(au_dbrange_test(d))) {
@@ -753,7 +753,7 @@ static int test_dir_busy(struct file *file, aufs_bindex_t br_id,
 	struct au_hfile *hfile;
 
 	err = 0;
-	root = IS_ROOT(file->f_dentry);
+	root = IS_ROOT(file->f_path.dentry);
 	if (root) {
 		get_file(file);
 		to_free[*idx] = file;
@@ -789,7 +789,6 @@ static int test_file_busy(struct super_block *sb, aufs_bindex_t br_id,
 	unsigned long long ull, max;
 	aufs_bindex_t bstart;
 	struct file *file, **array;
-	struct inode *inode;
 	struct dentry *root;
 	struct au_hfile *hfile;
 
@@ -810,8 +809,7 @@ static int test_file_busy(struct super_block *sb, aufs_bindex_t br_id,
 		/* AuDbg("%pD\n", file); */
 		fi_read_lock(file);
 		bstart = au_fbstart(file);
-		inode = file_inode(file);
-		if (!S_ISDIR(inode->i_mode)) {
+		if (!d_is_dir(file->f_path.dentry)) {
 			hfile = &au_fi(file)->fi_htop;
 			if (hfile->hf_br->br_id == br_id)
 				err = -EBUSY;
@@ -844,7 +842,7 @@ static void br_del_file(struct file **to_free, unsigned long long opened,
 			break;
 
 		/* AuDbg("%pD\n", file); */
-		AuDebugOn(!S_ISDIR(file_inode(file)->i_mode));
+		AuDebugOn(!d_is_dir(file->f_path.dentry));
 		bfound = -1;
 		fidir = au_fi(file)->fi_hdir;
 		AuDebugOn(!fidir);
@@ -1146,13 +1144,13 @@ out:
 
 long au_ibusy_ioctl(struct file *file, unsigned long arg)
 {
-	return au_ibusy(file->f_dentry->d_sb, (void __user *)arg);
+	return au_ibusy(file->f_path.dentry->d_sb, (void __user *)arg);
 }
 
 #ifdef CONFIG_COMPAT
 long au_ibusy_compat_ioctl(struct file *file, unsigned long arg)
 {
-	return au_ibusy(file->f_dentry->d_sb, compat_ptr(arg));
+	return au_ibusy(file->f_path.dentry->d_sb, compat_ptr(arg));
 }
 #endif
 

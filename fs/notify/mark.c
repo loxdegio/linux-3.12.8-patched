@@ -111,6 +111,17 @@ void fsnotify_put_mark(struct fsnotify_mark *mark)
 }
 EXPORT_SYMBOL(fsnotify_put_mark);
 
+/* Calculate mask of events for a list of marks */
+u32 fsnotify_recalc_mask(struct hlist_head *head)
+{
+	u32 new_mask = 0;
+	struct fsnotify_mark *mark;
+
+	hlist_for_each_entry(mark, head, obj_list)
+		new_mask |= mark->mask;
+	return new_mask;
+}
+
 /*
  * Any time a mark is getting freed we end up here.
  * The caller had better be holding a reference to this mark so we don't actually
@@ -134,7 +145,7 @@ void fsnotify_destroy_mark_locked(struct fsnotify_mark *mark,
 	mark->flags &= ~FSNOTIFY_MARK_FLAG_ALIVE;
 
 	if (mark->flags & FSNOTIFY_MARK_FLAG_INODE) {
-		inode = mark->i.inode;
+		inode = mark->inode;
 		fsnotify_destroy_inode_mark(mark);
 	} else if (mark->flags & FSNOTIFY_MARK_FLAG_VFSMOUNT)
 		fsnotify_destroy_vfsmount_mark(mark);
@@ -151,7 +162,7 @@ void fsnotify_destroy_mark_locked(struct fsnotify_mark *mark,
 	mutex_unlock(&group->mark_mutex);
 
 	spin_lock(&destroy_lock);
-	list_add(&mark->destroy_list, &destroy_list);
+	list_add(&mark->g_list, &destroy_list);
 	spin_unlock(&destroy_lock);
 	wake_up(&destroy_waitq);
 	/*
@@ -193,6 +204,27 @@ void fsnotify_destroy_mark(struct fsnotify_mark *mark,
 	mutex_unlock(&group->mark_mutex);
 }
 EXPORT_SYMBOL(fsnotify_destroy_mark);
+
+/*
+ * Destroy all marks in the given list. The marks must be already detached from
+ * the original inode / vfsmount.
+ */
+void fsnotify_destroy_marks(struct list_head *to_free)
+{
+	struct fsnotify_mark *mark, *lmark;
+	struct fsnotify_group *group;
+
+	list_for_each_entry_safe(mark, lmark, to_free, free_list) {
+		spin_lock(&mark->lock);
+		fsnotify_get_group(mark->group);
+		group = mark->group;
+		spin_unlock(&mark->lock);
+
+		fsnotify_destroy_mark(mark, group);
+		fsnotify_put_mark(mark);
+		fsnotify_put_group(group);
+	}
+}
 
 void fsnotify_set_mark_mask_locked(struct fsnotify_mark *mark, __u32 mask)
 {
@@ -245,6 +277,39 @@ int fsnotify_compare_groups(struct fsnotify_group *a, struct fsnotify_group *b)
 	if (a < b)
 		return 1;
 	return -1;
+}
+
+/* Add mark into proper place in given list of marks */
+int fsnotify_add_mark_list(struct hlist_head *head, struct fsnotify_mark *mark,
+			   int allow_dups)
+{
+	struct fsnotify_mark *lmark, *last = NULL;
+	int cmp;
+
+	/* is mark the first mark? */
+	if (hlist_empty(head)) {
+		hlist_add_head_rcu(&mark->obj_list, head);
+		return 0;
+	}
+
+	/* should mark be in the middle of the current list? */
+	hlist_for_each_entry(lmark, head, obj_list) {
+		last = lmark;
+
+		if ((lmark->group == mark->group) && !allow_dups)
+			return -EEXIST;
+
+		cmp = fsnotify_compare_groups(lmark->group, mark->group);
+		if (cmp >= 0) {
+			hlist_add_before_rcu(&mark->obj_list, &lmark->obj_list);
+			return 0;
+		}
+	}
+
+	BUG_ON(last == NULL);
+	/* mark should be the last entry.  last is the current last entry */
+	hlist_add_behind_rcu(&mark->obj_list, &last->obj_list);
+	return 0;
 }
 
 /*
@@ -307,7 +372,7 @@ err:
 	spin_unlock(&mark->lock);
 
 	spin_lock(&destroy_lock);
-	list_add(&mark->destroy_list, &destroy_list);
+	list_add(&mark->g_list, &destroy_list);
 	spin_unlock(&destroy_lock);
 	wake_up(&destroy_waitq);
 
@@ -323,6 +388,24 @@ int fsnotify_add_mark(struct fsnotify_mark *mark, struct fsnotify_group *group,
 	ret = fsnotify_add_mark_locked(mark, group, inode, mnt, allow_dups);
 	mutex_unlock(&group->mark_mutex);
 	return ret;
+}
+
+/*
+ * Given a list of marks, find the mark associated with given group. If found
+ * take a reference to that mark and return it, else return NULL.
+ */
+struct fsnotify_mark *fsnotify_find_mark(struct hlist_head *head,
+					 struct fsnotify_group *group)
+{
+	struct fsnotify_mark *mark;
+
+	hlist_for_each_entry(mark, head, obj_list) {
+		if (mark->group == group) {
+			fsnotify_get_mark(mark);
+			return mark;
+		}
+	}
+	return NULL;
 }
 
 /*
@@ -355,8 +438,8 @@ void fsnotify_clear_marks_by_group(struct fsnotify_group *group)
 void fsnotify_duplicate_mark(struct fsnotify_mark *new, struct fsnotify_mark *old)
 {
 	assert_spin_locked(&old->lock);
-	new->i.inode = old->i.inode;
-	new->m.mnt = old->m.mnt;
+	new->inode = old->inode;
+	new->mnt = old->mnt;
 	if (old->group)
 		fsnotify_get_group(old->group);
 	new->group = old->group;
@@ -390,8 +473,8 @@ static int fsnotify_mark_destroy(void *ignored)
 
 		synchronize_srcu(&fsnotify_mark_srcu);
 
-		list_for_each_entry_safe(mark, next, &private_destroy_list, destroy_list) {
-			list_del_init(&mark->destroy_list);
+		list_for_each_entry_safe(mark, next, &private_destroy_list, g_list) {
+			list_del_init(&mark->g_list);
 			fsnotify_put_mark(mark);
 		}
 

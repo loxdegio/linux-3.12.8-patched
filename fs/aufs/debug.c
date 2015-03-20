@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2005-2014 Junjiro R. Okajima
+ * Copyright (C) 2005-2015 Junjiro R. Okajima
  */
 
 /*
@@ -176,7 +176,7 @@ static int do_pri_dentry(aufs_bindex_t bindex, struct dentry *dentry)
 	dpri("d%d: %p, %pd2?, %s, cnt %d, flags 0x%x, %shashed\n",
 	     bindex, dentry, dentry,
 	     dentry->d_sb ? au_sbtype(dentry->d_sb) : "??",
-	     d_count(dentry), dentry->d_flags,
+	     au_dcount(dentry), dentry->d_flags,
 	     d_unhashed(dentry) ? "un" : "");
 	hn = -1;
 	if (bindex >= 0 && dentry->d_inode && au_test_aufs(dentry->d_sb)) {
@@ -225,16 +225,16 @@ static int do_pri_file(aufs_bindex_t bindex, struct file *file)
 	}
 	a[0] = 0;
 	if (bindex < 0
-	    && file->f_dentry
-	    && au_test_aufs(file->f_dentry->d_sb)
+	    && file->f_path.dentry
+	    && au_test_aufs(file->f_path.dentry->d_sb)
 	    && au_fi(file))
 		snprintf(a, sizeof(a), ", gen %d, mmapped %d",
 			 au_figen(file), atomic_read(&au_fi(file)->fi_mmapped));
 	dpri("f%d: mode 0x%x, flags 0%o, cnt %ld, v %llu, pos %llu%s\n",
 	     bindex, file->f_mode, file->f_flags, (long)file_count(file),
 	     file->f_version, file->f_pos, a);
-	if (file->f_dentry)
-		do_pri_dentry(bindex, file->f_dentry);
+	if (file->f_path.dentry)
+		do_pri_dentry(bindex, file->f_path.dentry);
 	return 0;
 }
 
@@ -247,7 +247,9 @@ void au_dpri_file(struct file *file)
 	int err;
 
 	err = do_pri_file(-1, file);
-	if (err || !file->f_dentry || !au_test_aufs(file->f_dentry->d_sb))
+	if (err
+	    || !file->f_path.dentry
+	    || !au_test_aufs(file->f_path.dentry->d_sb))
 		return;
 
 	finfo = au_fi(file);
@@ -412,7 +414,7 @@ void au_dbg_verify_dir_parent(struct dentry *dentry, unsigned int sigen)
 	struct dentry *parent;
 
 	parent = dget_parent(dentry);
-	AuDebugOn(!S_ISDIR(dentry->d_inode->i_mode));
+	AuDebugOn(!d_is_dir(dentry));
 	AuDebugOn(IS_ROOT(dentry));
 	AuDebugOn(au_digen_test(parent, sigen));
 	dput(parent);
@@ -421,11 +423,9 @@ void au_dbg_verify_dir_parent(struct dentry *dentry, unsigned int sigen)
 void au_dbg_verify_nondir_parent(struct dentry *dentry, unsigned int sigen)
 {
 	struct dentry *parent;
-	struct inode *inode;
 
 	parent = dget_parent(dentry);
-	inode = dentry->d_inode;
-	AuDebugOn(inode && S_ISDIR(dentry->d_inode->i_mode));
+	AuDebugOn(d_is_dir(dentry));
 	AuDebugOn(au_digen_test(parent, sigen));
 	dput(parent);
 }

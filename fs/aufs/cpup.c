@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2005-2014 Junjiro R. Okajima
+ * Copyright (C) 2005-2015 Junjiro R. Okajima
  */
 
 /*
@@ -283,7 +283,7 @@ static int au_do_copy_file(struct file *dst, struct file *src, loff_t len,
 		AuLabel(last hole);
 
 		err = 1;
-		if (au_test_nfs(dst->f_dentry->d_sb)) {
+		if (au_test_nfs(dst->f_path.dentry->d_sb)) {
 			/* nfs requires this step to make last hole */
 			/* is this only nfs? */
 			do {
@@ -319,7 +319,7 @@ int au_copy_file(struct file *dst, struct file *src, loff_t len)
 	char *buf;
 
 	err = -ENOMEM;
-	blksize = dst->f_dentry->d_sb->s_blocksize;
+	blksize = dst->f_path.dentry->d_sb->s_blocksize;
 	if (!blksize || PAGE_SIZE < blksize)
 		blksize = PAGE_SIZE;
 	AuDbg("blksize %lu\n", blksize);
@@ -1028,7 +1028,7 @@ static int au_do_cpup_wh(struct au_cp_generic *cpg, struct dentry *wh_dentry,
 	h_d_start = NULL;
 	if (file) {
 		h_d_start = hdp[0 + cpg->bsrc].hd_dentry;
-		hdp[0 + cpg->bsrc].hd_dentry = au_hf_top(file)->f_dentry;
+		hdp[0 + cpg->bsrc].hd_dentry = au_hf_top(file)->f_path.dentry;
 	}
 	flags_orig = cpg->flags;
 	cpg->flags = !AuCpup_DTIME;
@@ -1074,7 +1074,7 @@ static int au_cpup_wh(struct au_cp_generic *cpg, struct file *file)
 
 	dget(wh_dentry);
 	h_path.dentry = wh_dentry;
-	if (!S_ISDIR(wh_dentry->d_inode->i_mode)) {
+	if (!d_is_dir(wh_dentry)) {
 		/* no delegation since it is just created */
 		err = vfsub_unlink(h_parent->d_inode, &h_path,
 				   /*delegated*/NULL, /*force*/0);
@@ -1114,7 +1114,7 @@ int au_sio_cpup_wh(struct au_cp_generic *cpg, struct file *file)
 {
 	int err, wkq_err;
 	aufs_bindex_t bdst;
-	struct dentry *dentry, *parent, *h_orph, *h_parent, *h_dentry;
+	struct dentry *dentry, *parent, *h_orph, *h_parent;
 	struct inode *dir, *h_dir, *h_tmpdir;
 	struct au_wbr *wbr;
 	struct au_pin wh_pin, *pin_orig;
@@ -1137,10 +1137,6 @@ int au_sio_cpup_wh(struct au_cp_generic *cpg, struct file *file)
 		h_tmpdir = h_orph->d_inode;
 		au_set_h_iptr(dir, bdst, au_igrab(h_tmpdir), /*flags*/0);
 
-		if (file)
-			h_dentry = au_hf_top(file)->f_dentry;
-		else
-			h_dentry = au_h_dptr(dentry, au_dbstart(dentry));
 		mutex_lock_nested(&h_tmpdir->i_mutex, AuLsc_I_PARENT3);
 		/* todo: au_h_open_pre()? */
 
@@ -1250,7 +1246,7 @@ out:
 
 static int au_cpup_dir(struct dentry *dentry, aufs_bindex_t bdst,
 		       struct au_pin *pin,
-		       struct dentry *h_parent __maybe_unused ,
+		       struct dentry *h_parent __maybe_unused,
 		       void *arg __maybe_unused)
 {
 	struct au_cp_generic cpg = {
