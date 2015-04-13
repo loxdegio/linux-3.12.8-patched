@@ -142,9 +142,8 @@ extern struct inode_operations aufs_iop, aufs_symlink_iop, aufs_dir_iop;
 
 /* au_wr_dir flags */
 #define AuWrDir_ADD_ENTRY	1
-#define AuWrDir_TMP_WHENTRY	(1 << 1)
-#define AuWrDir_ISDIR		(1 << 2)
-#define AuWrDir_TMPFILE		(1 << 3)
+#define AuWrDir_ISDIR		(1 << 1)
+#define AuWrDir_TMPFILE		(1 << 2)
 #define au_ftest_wrdir(flags, name)	((flags) & AuWrDir_##name)
 #define au_fset_wrdir(flags, name) \
 	do { (flags) |= AuWrDir_##name; } while (0)
@@ -250,6 +249,7 @@ int au_ii_realloc(struct au_iinfo *iinfo, int nbr);
 #ifdef CONFIG_PROC_FS
 /* plink.c */
 int au_plink_maint(struct super_block *sb, int flags);
+struct au_sbinfo;
 void au_plink_maint_leave(struct au_sbinfo *sbinfo);
 int au_plink_maint_enter(struct super_block *sb);
 #ifdef CONFIG_AUFS_DEBUG
@@ -281,7 +281,8 @@ AuStubVoid(au_plink_half_refresh, struct super_block *sb, aufs_bindex_t br_id);
 
 #ifdef CONFIG_AUFS_XATTR
 /* xattr.c */
-int au_cpup_xattr(struct dentry *h_dst, struct dentry *h_src, int ignore_flags);
+int au_cpup_xattr(struct dentry *h_dst, struct dentry *h_src, int ignore_flags,
+		  unsigned int verbose);
 ssize_t aufs_listxattr(struct dentry *dentry, char *list, size_t size);
 ssize_t aufs_getxattr(struct dentry *dentry, const char *name, void *value,
 		      size_t size);
@@ -292,7 +293,7 @@ int aufs_removexattr(struct dentry *dentry, const char *name);
 /* void au_xattr_init(struct super_block *sb); */
 #else
 AuStubInt0(au_cpup_xattr, struct dentry *h_dst, struct dentry *h_src,
-	   int ignore_flags);
+	   int ignore_flags, unsigned int verbose);
 /* AuStubVoid(au_xattr_init, struct super_block *sb); */
 #endif
 
@@ -542,6 +543,7 @@ static inline void au_pin_set_parent_lflag(struct au_pin *pin,
 	}
 }
 
+#if 0 /* reserved */
 static inline void au_pin_set_parent(struct au_pin *pin, struct dentry *parent)
 {
 	if (pin) {
@@ -549,6 +551,7 @@ static inline void au_pin_set_parent(struct au_pin *pin, struct dentry *parent)
 		pin->parent = dget(parent);
 	}
 }
+#endif
 
 /* ---------------------------------------------------------------------- */
 
