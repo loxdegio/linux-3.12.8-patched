@@ -1,6 +1,6 @@
 VERSION = 3
 PATCHLEVEL = 19
-SUBLEVEL = 3
+SUBLEVEL = 4
 EXTRAVERSION = -geek
 NAME = Nucleum eorum libertate
 
@@ -372,7 +372,7 @@ CHECK		= sparse
 CHECKFLAGS     := -D__linux__ -Dlinux -D__STDC__ -Dunix -D__unix__ \
 		  -Wbitwise -Wno-return-void $(CF)
 OFLAGS			= -g0 -march=native -O3
-		  
+ 		  
 CFLAGS_MODULE   = $(OFLAGS)
 AFLAGS_MODULE   = $(OFLAGS)
 LDFLAGS_MODULE  =
