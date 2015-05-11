@@ -1585,8 +1585,6 @@ unsigned ata_exec_internal_sg(struct ata_device *dev,
 	else
 		tag = 0;
 
-	if (test_and_set_bit(tag, &ap->qc_allocated))
-		BUG();
 	qc = __ata_qc_from_tag(ap, tag);
 
 	qc->tag = tag;
@@ -1749,33 +1747,6 @@ unsigned ata_exec_internal(struct ata_device *dev,
 
 	return ata_exec_internal_sg(dev, tf, cdb, dma_dir, psg, n_elem,
 				    timeout);
-}
-
-/**
- *	ata_do_simple_cmd - execute simple internal command
- *	@dev: Device to which the command is sent
- *	@cmd: Opcode to execute
- *
- *	Execute a 'simple' command, that only consists of the opcode
- *	'cmd' itself, without filling any other registers
- *
- *	LOCKING:
- *	Kernel thread context (may sleep).
- *
- *	RETURNS:
- *	Zero on success, AC_ERR_* mask on failure
- */
-unsigned int ata_do_simple_cmd(struct ata_device *dev, u8 cmd)
-{
-	struct ata_taskfile tf;
-
-	ata_tf_init(dev, &tf);
-
-	tf.command = cmd;
-	tf.flags |= ATA_TFLAG_DEVICE;
-	tf.protocol = ATA_PROT_NODATA;
-
-	return ata_exec_internal(dev, &tf, NULL, DMA_NONE, NULL, 0, 0);
 }
 
 /**
@@ -2049,6 +2020,9 @@ retry:
 			goto retry;
 		}
 	}
+
+	if (id[79] & (1 << SATA_DIPM))
+		dev->init_dipm = true;
 
 	*p_class = class;
 
@@ -3677,6 +3651,11 @@ int sata_link_scr_lpm(struct ata_link *link, enum ata_lpm_policy policy,
 		return rc;
 
 	switch (policy) {
+	case ATA_LPM_FIRMWARE_DEFAULTS:
+		/* use the values we read at probe */
+		scontrol &= ~(0x7 << 8);
+		scontrol |= (link->init_lpm << 8);
+		break;
 	case ATA_LPM_MAX_POWER:
 		/* disable all LPM transitions */
 		scontrol |= (0x7 << 8);
@@ -3687,10 +3666,6 @@ int sata_link_scr_lpm(struct ata_link *link, enum ata_lpm_policy policy,
 		}
 		break;
 	case ATA_LPM_MED_POWER:
-		/* allow LPM to PARTIAL */
-		scontrol &= ~(0x1 << 8);
-		scontrol |= (0x6 << 8);
-		break;
 	case ATA_LPM_MIN_POWER:
 		if (ata_link_nr_enabled(link) > 0)
 			/* no restrictions on LPM transitions */
@@ -4233,9 +4208,18 @@ static const struct ata_blacklist_entry ata_device_blacklist [] = {
 	{ "PIONEER DVD-RW  DVR-216D",	NULL,	ATA_HORKAGE_NOSETXFER },
 
 	/* devices that don't properly handle queued TRIM commands */
-	{ "Micron_M[56]*",		NULL,	ATA_HORKAGE_NO_NCQ_TRIM |
+	{ "Micron_M500*",		NULL,	ATA_HORKAGE_NO_NCQ_TRIM |
 						ATA_HORKAGE_ZERO_AFTER_TRIM, },
-	{ "Crucial_CT*SSD*",		NULL,	ATA_HORKAGE_NO_NCQ_TRIM, },
+	{ "Crucial_CT*M500*",		NULL,	ATA_HORKAGE_NO_NCQ_TRIM |
+						ATA_HORKAGE_ZERO_AFTER_TRIM, },
+	{ "Micron_M5[15]0*",		"MU01",	ATA_HORKAGE_NO_NCQ_TRIM |
+						ATA_HORKAGE_ZERO_AFTER_TRIM, },
+	{ "Crucial_CT*M550*",		"MU01",	ATA_HORKAGE_NO_NCQ_TRIM |
+						ATA_HORKAGE_ZERO_AFTER_TRIM, },
+	{ "Crucial_CT*MX100*",		"MU01",	ATA_HORKAGE_NO_NCQ_TRIM |
+						ATA_HORKAGE_ZERO_AFTER_TRIM, },
+	{ "Samsung SSD 850 PRO*",	NULL,	ATA_HORKAGE_NO_NCQ_TRIM |
+						ATA_HORKAGE_ZERO_AFTER_TRIM, },
 
 	/*
 	 * As defined, the DRAT (Deterministic Read After Trim) and RZAT
@@ -4255,6 +4239,8 @@ static const struct ata_blacklist_entry ata_device_blacklist [] = {
 	 */
 	{ "INTEL*SSDSC2MH*",		NULL,	0, },
 
+	{ "Micron*",			NULL,	ATA_HORKAGE_ZERO_AFTER_TRIM, },
+	{ "Crucial*",			NULL,	ATA_HORKAGE_ZERO_AFTER_TRIM, },
 	{ "INTEL*SSD*", 		NULL,	ATA_HORKAGE_ZERO_AFTER_TRIM, },
 	{ "SSD*INTEL*",			NULL,	ATA_HORKAGE_ZERO_AFTER_TRIM, },
 	{ "Samsung*SSD*",		NULL,	ATA_HORKAGE_ZERO_AFTER_TRIM, },
@@ -4749,49 +4735,6 @@ void swap_buf_le16(u16 *buf, unsigned int buf_words)
 }
 
 /**
- *	ata_qc_new - Request an available ATA command, for queueing
- *	@ap: target port
- *
- *	Some ATA host controllers may implement a queue depth which is less
- *	than ATA_MAX_QUEUE. So we shouldn't allocate a tag which is beyond
- *	the hardware limitation.
- *
- *	LOCKING:
- *	None.
- */
-
-static struct ata_queued_cmd *ata_qc_new(struct ata_port *ap)
-{
-	struct ata_queued_cmd *qc = NULL;
-	unsigned int max_queue = ap->host->n_tags;
-	unsigned int i, tag;
-
-	/* no command while frozen */
-	if (unlikely(ap->pflags & ATA_PFLAG_FROZEN))
-		return NULL;
-
-	for (i = 0, tag = ap->last_tag + 1; i < max_queue; i++, tag++) {
-		if (ap->flags & ATA_FLAG_LOWTAG)
-			tag = i;
-		else
-			tag = tag < max_queue ? tag : 0;
-
-		/* the last tag is reserved for internal command. */
-		if (tag == ATA_TAG_INTERNAL)
-			continue;
-
-		if (!test_and_set_bit(tag, &ap->qc_allocated)) {
-			qc = __ata_qc_from_tag(ap, tag);
-			qc->tag = tag;
-			ap->last_tag = tag;
-			break;
-		}
-	}
-
-	return qc;
-}
-
-/**
  *	ata_qc_new_init - Request an available ATA command, and initialize it
  *	@dev: Device from whom we request an available command structure
  *
@@ -4799,19 +4742,29 @@ static struct ata_queued_cmd *ata_qc_new(struct ata_port *ap)
  *	None.
  */
 
-struct ata_queued_cmd *ata_qc_new_init(struct ata_device *dev)
+struct ata_queued_cmd *ata_qc_new_init(struct ata_device *dev, int tag)
 {
 	struct ata_port *ap = dev->link->ap;
 	struct ata_queued_cmd *qc;
 
-	qc = ata_qc_new(ap);
-	if (qc) {
-		qc->scsicmd = NULL;
-		qc->ap = ap;
-		qc->dev = dev;
+	/* no command while frozen */
+	if (unlikely(ap->pflags & ATA_PFLAG_FROZEN))
+		return NULL;
 
-		ata_qc_reinit(qc);
+	/* libsas case */
+	if (ap->flags & ATA_FLAG_SAS_HOST) {
+		tag = ata_sas_allocate_tag(ap);
+		if (tag < 0)
+			return NULL;
 	}
+
+	qc = __ata_qc_from_tag(ap, tag);
+	qc->tag = tag;
+	qc->scsicmd = NULL;
+	qc->ap = ap;
+	qc->dev = dev;
+
+	ata_qc_reinit(qc);
 
 	return qc;
 }
@@ -4838,7 +4791,8 @@ void ata_qc_free(struct ata_queued_cmd *qc)
 	tag = qc->tag;
 	if (likely(ata_tag_valid(tag))) {
 		qc->tag = ATA_TAG_POISON;
-		clear_bit(tag, &ap->qc_allocated);
+		if (ap->flags & ATA_FLAG_SAS_HOST)
+			ata_sas_free_tag(tag, ap);
 	}
 }
 
@@ -5609,11 +5563,11 @@ void ata_link_init(struct ata_port *ap, struct ata_link *link, int pmp)
 }
 
 /**
- *	sata_link_init_spd - Initialize link->sata_spd_limit
- *	@link: Link to configure sata_spd_limit for
+ *	sata_link_init_config - Initialize link->sata_spd_limit and init_lpm
+ *	@link: Link to configure sata_spd_limit and init_lpm for
  *
- *	Initialize @link->[hw_]sata_spd_limit to the currently
- *	configured value.
+ *	Initialize @link->[hw_]sata_spd_limit and @link->init_lpm to the
+ *	currently configured value.
  *
  *	LOCKING:
  *	Kernel thread context (may sleep).
@@ -5621,7 +5575,7 @@ void ata_link_init(struct ata_port *ap, struct ata_link *link, int pmp)
  *	RETURNS:
  *	0 on success, -errno on failure.
  */
-int sata_link_init_spd(struct ata_link *link)
+int sata_link_init_config(struct ata_link *link)
 {
 	u8 spd;
 	int rc;
@@ -5637,6 +5591,8 @@ int sata_link_init_spd(struct ata_link *link)
 	ata_force_link_limits(link);
 
 	link->sata_spd_limit = link->hw_sata_spd_limit;
+
+	link->init_lpm = (link->saved_scontrol >> 8) & 0x7;
 
 	return 0;
 }
@@ -6187,9 +6143,9 @@ int ata_host_register(struct ata_host *host, struct scsi_host_template *sht)
 			ap->cbl = ATA_CBL_SATA;
 
 		/* init sata_spd_limit to the current value */
-		sata_link_init_spd(&ap->link);
+		sata_link_init_config(&ap->link);
 		if (ap->slave_link)
-			sata_link_init_spd(ap->slave_link);
+			sata_link_init_config(ap->slave_link);
 
 		/* print per-port info to dmesg */
 		xfer_mask = ata_pack_xfermask(ap->pio_mask, ap->mwdma_mask,

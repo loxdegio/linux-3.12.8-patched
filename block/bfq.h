@@ -1,5 +1,5 @@
 /*
- * BFQ-v7r7 for 3.19.0: data structures and common functions prototypes.
+ * BFQ-v7r7 for 4.0.0: data structures and common functions prototypes.
  *
  * Based on ideas and code from CFQ:
  * Copyright (C) 2003 Jens Axboe <axboe@kernel.dk>

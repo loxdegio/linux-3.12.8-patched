@@ -313,6 +313,12 @@ struct ahci_port_priv {
 	/* enclosure management info per PM slot */
 	struct ahci_em_priv	em_priv[EM_MAX_SLOTS];
 	char			*irq_desc;	/* desc in /proc/interrupts */
+	bool			init_alpe;	/* alpe enabled by default */
+	bool			init_asp;	/* asp enabled by default */
+	bool			init_devslp;	/* devslp enabled by default */
+	u32			init_dito;	/* initial dito configuration */
+	u32			init_deto;	/* initial deto configuration */
+	u32			init_mdat;	/* initial mdat configuration */
 };
 
 struct ahci_host_priv {
@@ -333,7 +339,7 @@ struct ahci_host_priv {
 	u32			em_msg_type;	/* EM message type */
 	bool			got_runtime_pm; /* Did we do pm_runtime_get? */
 	struct clk		*clks[AHCI_MAX_CLKS]; /* Optional */
-	struct regulator	*target_pwr;	/* Optional */
+	struct regulator	**target_pwrs;	/* Optional */
 	/*
 	 * If platform uses PHYs. There is a 1:1 relation between the port number and
 	 * the PHY position in this array.
@@ -354,6 +360,10 @@ extern int ahci_ignore_sss;
 extern struct device_attribute *ahci_shost_attrs[];
 extern struct device_attribute *ahci_sdev_attrs[];
 
+/*
+ * This must be instantiated by the edge drivers.  Read the comments
+ * for ATA_BASE_SHT
+ */
 #define AHCI_SHT(drv_name)						\
 	ATA_NCQ_SHT(drv_name),						\
 	.can_queue		= AHCI_MAX_CMDS - 1,			\
@@ -367,6 +377,7 @@ extern struct ata_port_operations ahci_platform_ops;
 extern struct ata_port_operations ahci_pmp_retry_srst_ops;
 
 unsigned int ahci_dev_classify(struct ata_port *ap);
+int ahci_setup_port_privdata(struct ata_port *ap);
 void ahci_fill_cmd_slot(struct ahci_port_priv *pp, unsigned int tag,
 			u32 opts);
 void ahci_save_initial_config(struct device *dev,

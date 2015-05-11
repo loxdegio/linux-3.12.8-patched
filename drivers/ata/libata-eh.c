@@ -1635,7 +1635,6 @@ unsigned int atapi_eh_request_sense(struct ata_device *dev,
 
 	DPRINTK("ATAPI request sense\n");
 
-	/* FIXME: is this needed? */
 	memset(sense_buf, 0, SCSI_SENSE_BUFFERSIZE);
 
 	/* initialize sense_buf with the error register,
@@ -2482,7 +2481,6 @@ static void ata_eh_link_report(struct ata_link *link)
 	for (tag = 0; tag < ATA_MAX_QUEUE; tag++) {
 		struct ata_queued_cmd *qc = __ata_qc_from_tag(ap, tag);
 		struct ata_taskfile *cmd = &qc->tf, *res = &qc->result_tf;
-		const u8 *cdb = qc->cdb;
 		char data_buf[20] = "";
 		char cdb_buf[70] = "";
 
@@ -2510,16 +2508,15 @@ static void ata_eh_link_report(struct ata_link *link)
 		}
 
 		if (ata_is_atapi(qc->tf.protocol)) {
-			if (qc->scsicmd)
-				scsi_print_command(qc->scsicmd);
-			else
-				snprintf(cdb_buf, sizeof(cdb_buf),
-				 "cdb %02x %02x %02x %02x %02x %02x %02x %02x  "
-				 "%02x %02x %02x %02x %02x %02x %02x %02x\n         ",
-				 cdb[0], cdb[1], cdb[2], cdb[3],
-				 cdb[4], cdb[5], cdb[6], cdb[7],
-				 cdb[8], cdb[9], cdb[10], cdb[11],
-				 cdb[12], cdb[13], cdb[14], cdb[15]);
+			const u8 *cdb = qc->cdb;
+			size_t cdb_len = qc->dev->cdb_len;
+
+			if (qc->scsicmd) {
+				cdb = qc->scsicmd->cmnd;
+				cdb_len = qc->scsicmd->cmd_len;
+			}
+			__scsi_format_command(cdb_buf, sizeof(cdb_buf),
+					      cdb, cdb_len);
 		} else {
 			const char *descr = ata_get_cmd_descript(cmd->command);
 			if (descr)
@@ -3414,9 +3411,7 @@ static int ata_eh_set_lpm(struct ata_link *link, enum ata_lpm_policy policy,
 		return 0;
 
 	/*
-	 * DIPM is enabled only for MIN_POWER as some devices
-	 * misbehave when the host NACKs transition to SLUMBER.  Order
-	 * device and link configurations such that the host always
+	 * Order device and link configurations such that the host always
 	 * allows DIPM requests.
 	 */
 	ata_for_each_dev(dev, link, ENABLED) {
@@ -3435,7 +3430,7 @@ static int ata_eh_set_lpm(struct ata_link *link, enum ata_lpm_policy policy,
 			hints &= ~ATA_LPM_HIPM;
 
 		/* disable DIPM before changing link config */
-		if (policy != ATA_LPM_MIN_POWER && dipm) {
+		if (policy < ATA_LPM_MED_POWER && dipm) {
 			err_mask = ata_dev_set_feature(dev,
 					SETFEATURES_SATA_DISABLE, SATA_DIPM);
 			if (err_mask && err_mask != AC_ERR_DEV) {
@@ -3476,10 +3471,13 @@ static int ata_eh_set_lpm(struct ata_link *link, enum ata_lpm_policy policy,
 	if (ap && ap->slave_link)
 		ap->slave_link->lpm_policy = policy;
 
-	/* host config updated, enable DIPM if transitioning to MIN_POWER */
+	/* host config updated, enable DIPM if transitioning to MED_POWER,
+	 * MIN_POWER or FIRMWARE_DEFAULT when enabled by firmware
+	 */
 	ata_for_each_dev(dev, link, ENABLED) {
-		if (policy == ATA_LPM_MIN_POWER && !no_dipm &&
-		    ata_id_has_dipm(dev->id)) {
+		if ((policy >= ATA_LPM_MED_POWER && !no_dipm &&
+		     ata_id_has_dipm(dev->id)) ||
+		    (policy == ATA_LPM_FIRMWARE_DEFAULTS && dev->init_dipm)) {
 			err_mask = ata_dev_set_feature(dev,
 					SETFEATURES_SATA_ENABLE, SATA_DIPM);
 			if (err_mask && err_mask != AC_ERR_DEV) {

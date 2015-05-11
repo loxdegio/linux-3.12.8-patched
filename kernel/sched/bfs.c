@@ -134,7 +134,7 @@
 
 void print_scheduler_version(void)
 {
-	printk(KERN_INFO "BFS CPU scheduler v0.461 by Con Kolivas.\n");
+	printk(KERN_INFO "BFS CPU scheduler v0.462 by Con Kolivas.\n");
 }
 
 /*
@@ -185,8 +185,8 @@ struct global_rq {
 	unsigned long long nr_switches;
 	struct list_head queue[PRIO_LIMIT];
 	DECLARE_BITMAP(prio_bitmap, PRIO_LIMIT + 1);
-#ifdef CONFIG_SMP
 	unsigned long qnr; /* queued not running */
+#ifdef CONFIG_SMP
 	cpumask_t cpu_idle_map;
 	bool idle_cpus;
 #endif
@@ -615,7 +615,6 @@ static inline void resched_curr(struct rq *rq)
 	resched_task(rq->curr);
 }
 
-#ifdef CONFIG_SMP
 /*
  * qnr is the "queued but not running" count which is the total number of
  * tasks on the global runqueue list waiting for cpu time but not actually
@@ -636,6 +635,7 @@ static inline int queued_notrunning(void)
 	return grq.qnr;
 }
 
+#ifdef CONFIG_SMP
 /*
  * The cpu_idle_map stores a bitmap of all the CPUs currently idle to
  * allow easy lookup of whether any suitable idle CPUs are available.
@@ -773,6 +773,8 @@ static int best_smt_bias(int cpu)
 			continue;
 		if (!rq->online)
 			continue;
+		if (!rq->rq_mm)
+			continue;
 		if (likely(rq->rq_smt_bias > best_bias))
 			best_bias = rq->rq_smt_bias;
 	}
@@ -866,19 +868,6 @@ static inline int locality_diff(struct task_struct *p, struct rq *rq)
 	return rq->cpu_locality[task_cpu(p)];
 }
 #else /* CONFIG_SMP */
-static inline void inc_qnr(void)
-{
-}
-
-static inline void dec_qnr(void)
-{
-}
-
-static inline int queued_notrunning(void)
-{
-	return grq.nr_running;
-}
-
 static inline void set_cpuidle_map(int cpu)
 {
 }
@@ -1007,7 +996,7 @@ void set_task_cpu(struct task_struct *p, unsigned int cpu)
 	if (task_cpu(p) == cpu)
 		return;
 	trace_sched_migrate_task(p, cpu);
-	perf_sw_event(PERF_COUNT_SW_CPU_MIGRATIONS, 1, NULL, 0);
+	perf_sw_event_sched(PERF_COUNT_SW_CPU_MIGRATIONS, 1, 0);
 
 	/*
 	 * After ->cpu is set up to a new value, task_grq_lock(p, ...) can be
@@ -3263,6 +3252,7 @@ static inline void set_rq_task(struct rq *rq, struct task_struct *p)
 	rq->rq_policy = p->policy;
 	rq->rq_prio = p->prio;
 #ifdef CONFIG_SMT_NICE
+	rq->rq_mm = p->mm;
 	rq->rq_smt_bias = p->smt_bias;
 #endif
 	if (p != rq->idle)
@@ -3368,8 +3358,12 @@ static void wake_smt_siblings(int __maybe_unused cpu) {}
  *          - explicit schedule() call
  *          - return from syscall or exception to user-space
  *          - return from interrupt-handler to user-space
+ *
+ * WARNING: all callers must re-check need_resched() afterward and reschedule
+ * accordingly in case an event triggered the need for rescheduling (such as
+ * an interrupt waking up a task) while preemption was disabled in __schedule().
  */
-asmlinkage __visible void __sched schedule(void)
+static void __sched __schedule(void)
 {
 	struct task_struct *prev, *next, *idle;
 	unsigned long *switch_count;
@@ -3427,8 +3421,8 @@ need_resched:
 
 	/*
 	 * If we are going to sleep and we have plugged IO queued, make
-	 * sure to submit it to avoid deadlocks.
-	 */
+	 * sure to submit it to avoid deadlocks. This usually clears before
+	 * grabbing the lock but still may rarely happen here. */
 	if (unlikely(deactivate && blk_needs_flush_plug(prev))) {
 		grq_unlock_irq();
 		preempt_enable_no_resched();
@@ -3524,8 +3518,28 @@ need_resched:
 
 rerun_prev_unlocked:
 	sched_preempt_enable_no_resched();
-	if (unlikely(need_resched()))
-		goto need_resched;
+}
+
+static inline void sched_submit_work(struct task_struct *tsk)
+{
+	if (!tsk->state || tsk_is_pi_blocked(tsk))
+		return;
+	/*
+	 * If we are going to sleep and we have plugged IO queued,
+	 * make sure to submit it to avoid deadlocks.
+	 */
+	if (blk_needs_flush_plug(tsk))
+		blk_schedule_flush_plug(tsk);
+}
+
+asmlinkage __visible void __sched schedule(void)
+{
+	struct task_struct *tsk = current;
+
+	sched_submit_work(tsk);
+	do {
+		__schedule();
+	} while (need_resched());
 }
 
 EXPORT_SYMBOL(schedule);
@@ -3561,6 +3575,21 @@ void __sched schedule_preempt_disabled(void)
 	preempt_disable();
 }
 
+static void __sched notrace preempt_schedule_common(void)
+{
+	do {
+		__preempt_count_add(PREEMPT_ACTIVE);
+		__schedule();
+		__preempt_count_sub(PREEMPT_ACTIVE);
+
+		/*
+		 * Check again in case we missed a preemption opportunity
+		 * between schedule and now.
+		 */
+		barrier();
+	} while (need_resched());
+}
+
 #ifdef CONFIG_PREEMPT
 /*
  * this is the entry point to schedule() from in-kernel preemption
@@ -3576,17 +3605,7 @@ asmlinkage __visible void __sched notrace preempt_schedule(void)
 	if (likely(!preemptible()))
 		return;
 
-	do {
-		__preempt_count_add(PREEMPT_ACTIVE);
-		schedule();
-		__preempt_count_sub(PREEMPT_ACTIVE);
-
-		/*
-		 * Check again in case we missed a preemption opportunity
-		 * between schedule and now.
-		 */
-		barrier();
-	} while (need_resched());
+	preempt_schedule_common();
 }
 NOKPROBE_SYMBOL(preempt_schedule);
 EXPORT_SYMBOL(preempt_schedule);
@@ -4674,17 +4693,10 @@ SYSCALL_DEFINE0(sched_yield)
 	return 0;
 }
 
-static void __cond_resched(void)
-{
-	__preempt_count_add(PREEMPT_ACTIVE);
-	schedule();
-	__preempt_count_sub(PREEMPT_ACTIVE);
-}
-
 int __sched _cond_resched(void)
 {
 	if (should_resched()) {
-		__cond_resched();
+		preempt_schedule_common();
 		return 1;
 	}
 	return 0;
@@ -4709,7 +4721,7 @@ int __cond_resched_lock(spinlock_t *lock)
 	if (spin_needbreak(lock) || resched) {
 		spin_unlock(lock);
 		if (resched)
-			__cond_resched();
+			preempt_schedule_common();
 		else
 			cpu_relax();
 		ret = 1;
@@ -4725,7 +4737,7 @@ int __sched __cond_resched_softirq(void)
 
 	if (should_resched()) {
 		local_bh_enable();
-		__cond_resched();
+		preempt_schedule_common();
 		local_bh_disable();
 		return 1;
 	}
@@ -4816,36 +4828,31 @@ EXPORT_SYMBOL_GPL(yield_to);
  * But don't do that if it is a deliberate, throttling IO wait (this task
  * has set its backing_dev_info: the queue against which it should throttle)
  */
-void __sched io_schedule(void)
-{
-	struct rq *rq = raw_rq();
-
-	delayacct_blkio_start();
-	atomic_inc(&rq->nr_iowait);
-	blk_flush_plug(current);
-	current->in_iowait = 1;
-	schedule();
-	current->in_iowait = 0;
-	atomic_dec(&rq->nr_iowait);
-	delayacct_blkio_end();
-}
-EXPORT_SYMBOL(io_schedule);
 
 long __sched io_schedule_timeout(long timeout)
 {
-	struct rq *rq = raw_rq();
+	struct task_struct *curr = current;
+	int old_iowait = curr->in_iowait;
+	struct rq *rq;
 	long ret;
 
+	curr->in_iowait = 1;
+	if (old_iowait)
+		blk_schedule_flush_plug(curr);
+	else
+		blk_flush_plug(curr);
+
 	delayacct_blkio_start();
+	rq = raw_rq();
 	atomic_inc(&rq->nr_iowait);
-	blk_flush_plug(current);
-	current->in_iowait = 1;
 	ret = schedule_timeout(timeout);
-	current->in_iowait = 0;
+	curr->in_iowait = old_iowait;
 	atomic_dec(&rq->nr_iowait);
 	delayacct_blkio_end();
+
 	return ret;
 }
+EXPORT_SYMBOL(io_schedule_timeout);
 
 /**
  * sys_sched_get_priority_max - return maximum RT priority.
@@ -4952,9 +4959,10 @@ void sched_show_task(struct task_struct *p)
 {
 	unsigned long free = 0;
 	int ppid;
-	unsigned state;
+	unsigned long state = p->state;
 
-	state = p->state ? __ffs(p->state) + 1 : 0;
+	if (state)
+		state = __ffs(state) + 1;
 	printk(KERN_INFO "%-15.15s %c", p->comm,
 		state < sizeof(stat_nam) - 1 ? stat_nam[state] : '?');
 #if BITS_PER_LONG == 32
@@ -5259,7 +5267,7 @@ out:
 	task_grq_unlock(&flags);
 
 	if (running_wrong)
-		__cond_resched();
+		preempt_schedule_common();
 
 	return ret;
 }
@@ -5698,9 +5706,6 @@ static inline bool sched_debug(void)
 static int sched_domain_debug_one(struct sched_domain *sd, int cpu, int level,
 				  struct cpumask *groupmask)
 {
-	char str[256];
-
-	cpulist_scnprintf(str, sizeof(str), sched_domain_span(sd));
 	cpumask_clear(groupmask);
 
 	printk(KERN_DEBUG "%*s domain %d: ", level, "", level);
@@ -5713,7 +5718,8 @@ static int sched_domain_debug_one(struct sched_domain *sd, int cpu, int level,
 		return -1;
 	}
 
-	printk(KERN_CONT "span %s level %s\n", str, sd->name);
+	printk(KERN_CONT "span %*pbl level %s\n",
+	       cpumask_pr_args(sched_domain_span(sd)), sd->name);
 
 	if (!cpumask_test_cpu(cpu, sched_domain_span(sd))) {
 		printk(KERN_ERR "ERROR: domain->span does not contain "
@@ -6962,7 +6968,7 @@ void __init sched_init_smp(void)
 		for_each_online_cpu(other_cpu) {
 			if (other_cpu <= cpu)
 				continue;
-			printk(KERN_WARNING "LOCALITY CPU %d to %d: %d\n", cpu, other_cpu, rq->cpu_locality[other_cpu]);
+			printk(KERN_DEBUG "BFS LOCALITY CPU %d to %d: %d\n", cpu, other_cpu, rq->cpu_locality[other_cpu]);
 		}
 	}
 }
@@ -7010,6 +7016,7 @@ void __init sched_init(void)
 #endif
 	for_each_possible_cpu(i) {
 		rq = cpu_rq(i);
+		rq->grq_lock = &grq.lock;
 		rq->user_pc = rq->nice_pc = rq->softirq_pc = rq->system_pc =
 			      rq->iowait_pc = rq->idle_pc = 0;
 		rq->dither = false;
@@ -7129,6 +7136,9 @@ void ___might_sleep(const char *file, int line, int preempt_offset)
 		"in_atomic(): %d, irqs_disabled(): %d, pid: %d, name: %s\n",
 			in_atomic(), irqs_disabled(),
 			current->pid, current->comm);
+
+	if (task_stack_end_corrupted(current))
+		printk(KERN_EMERG "Thread overran stack, or stack corrupted\n");
 
 	debug_show_held_locks(current);
 	if (irqs_disabled())

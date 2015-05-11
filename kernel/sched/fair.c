@@ -701,7 +701,6 @@ void init_task_runnable_average(struct task_struct *p)
 {
 	u32 slice;
 
-	p->se.avg.decay_count = 0;
 	slice = sched_slice(task_cfs_rq(p), &p->se) >> 10;
 	p->se.avg.runnable_avg_sum = slice;
 	p->se.avg.runnable_avg_period = slice;
@@ -1635,9 +1634,11 @@ static void update_task_scan_period(struct task_struct *p,
 	/*
 	 * If there were no record hinting faults then either the task is
 	 * completely idle or all activity is areas that are not of interest
-	 * to automatic numa balancing. Scan slower
+	 * to automatic numa balancing. Related to that, if there were failed
+	 * migration then it implies we are migrating too quickly or the local
+	 * node is overloaded. In either case, scan slower
 	 */
-	if (local + shared == 0) {
+	if (local + shared == 0 || p->numa_faults_locality[2]) {
 		p->numa_scan_period = min(p->numa_scan_period_max,
 			p->numa_scan_period << 1);
 
@@ -2106,6 +2107,8 @@ void task_numa_fault(int last_cpupid, int mem_node, int pages, int flags)
 
 	if (migrated)
 		p->numa_pages_migrated += pages;
+	if (flags & TNF_MIGRATE_FAIL)
+		p->numa_faults_locality[2] += pages;
 
 	p->numa_faults[task_faults_idx(NUMA_MEMBUF, mem_node, priv)] += pages;
 	p->numa_faults[task_faults_idx(NUMA_CPUBUF, cpu_node, priv)] += pages;
@@ -2187,8 +2190,10 @@ void task_numa_work(struct callback_head *work)
 		vma = mm->mmap;
 	}
 	for (; vma; vma = vma->vm_next) {
-		if (!vma_migratable(vma) || !vma_policy_mof(vma))
+		if (!vma_migratable(vma) || !vma_policy_mof(vma) ||
+			is_vm_hugetlb_page(vma)) {
 			continue;
+		}
 
 		/*
 		 * Shared library pages mapped by multiple processes are not
@@ -2599,11 +2604,11 @@ static inline u64 __synchronize_entity_decay(struct sched_entity *se)
 	u64 decays = atomic64_read(&cfs_rq->decay_counter);
 
 	decays -= se->avg.decay_count;
+	se->avg.decay_count = 0;
 	if (!decays)
 		return 0;
 
 	se->avg.load_avg_contrib = decay_load(se->avg.load_avg_contrib, decays);
-	se->avg.decay_count = 0;
 
 	return decays;
 }
@@ -4376,7 +4381,6 @@ static void task_waking_fair(struct task_struct *p)
 	record_wakee(p);
 }
 
-#ifndef	CONFIG_BLD
 #ifdef CONFIG_FAIR_GROUP_SCHED
 /*
  * effective_load() calculates the load change as seen from the root_task_group
@@ -4829,7 +4833,6 @@ unlock:
 
 	return new_cpu;
 }
-#endif	/* CONFIG_BLD */
 
 /*
  * Called immediately before a task is migrated to a new cpu; task_cpu(p) and
@@ -5125,7 +5128,6 @@ simple:
 	return p;
 
 idle:
-#ifndef	CONFIG_BLD
 	new_tasks = idle_balance(rq);
 	/*
 	 * Because idle_balance() releases (and re-acquires) rq->lock, it is
@@ -5137,7 +5139,7 @@ idle:
 
 	if (new_tasks > 0)
 		goto again;
-#endif
+
 	return NULL;
 }
 
@@ -5185,7 +5187,7 @@ static void yield_task_fair(struct rq *rq)
 		 * so we don't do microscopic update in schedule()
 		 * and double the fastpath cost.
 		 */
-		 rq->skip_clock_update = 1;
+		rq_clock_skip_update(rq, true);
 	}
 
 	set_skip_buddy(se);
@@ -5977,8 +5979,8 @@ static unsigned long scale_rt_capacity(int cpu)
 	 */
 	age_stamp = ACCESS_ONCE(rq->age_stamp);
 	avg = ACCESS_ONCE(rq->rt_avg);
+	delta = __rq_clock_broken(rq) - age_stamp;
 
-	delta = rq_clock(rq) - age_stamp;
 	if (unlikely(delta < 0))
 		delta = 0;
 
@@ -7321,38 +7323,11 @@ static inline int on_null_domain(struct rq *rq)
  *   needed, they will kick the idle load balancer, which then does idle
  *   load balancing for all the idle CPUs.
  */
-#ifndef	CONFIG_BLD
 static struct {
 	cpumask_var_t idle_cpus_mask;
 	atomic_t nr_cpus;
 	unsigned long next_balance;     /* in jiffy units */
 } nohz ____cacheline_aligned;
-
-static inline void nohz_balance_exit_idle(int cpu)
-{
-	if (unlikely(test_bit(NOHZ_TICK_STOPPED, nohz_flags(cpu)))) {
-		/*
-		 * Completely isolated CPUs don't ever set, so we must test.
-		 */
-		if (likely(cpumask_test_cpu(cpu, nohz.idle_cpus_mask))) {
-			cpumask_clear_cpu(cpu, nohz.idle_cpus_mask);
-			atomic_dec(&nohz.nr_cpus);
-		}
-		clear_bit(NOHZ_TICK_STOPPED, nohz_flags(cpu));
-	}
-}
-
-static int sched_ilb_notifier(struct notifier_block *nfb,
-					unsigned long action, void *hcpu)
-{
-	switch (action & ~CPU_TASKS_FROZEN) {
-	case CPU_DYING:
-		nohz_balance_exit_idle(smp_processor_id());
-		return NOTIFY_OK;
-	default:
-		return NOTIFY_DONE;
-	}
-}
 
 static inline int find_new_ilb(void)
 {
@@ -7391,7 +7366,20 @@ static void nohz_balancer_kick(void)
 	smp_send_reschedule(ilb_cpu);
 	return;
 }
-#endif	/* CONFIG_BLD */
+
+static inline void nohz_balance_exit_idle(int cpu)
+{
+	if (unlikely(test_bit(NOHZ_TICK_STOPPED, nohz_flags(cpu)))) {
+		/*
+		 * Completely isolated CPUs don't ever set, so we must test.
+		 */
+		if (likely(cpumask_test_cpu(cpu, nohz.idle_cpus_mask))) {
+			cpumask_clear_cpu(cpu, nohz.idle_cpus_mask);
+			atomic_dec(&nohz.nr_cpus);
+		}
+		clear_bit(NOHZ_TICK_STOPPED, nohz_flags(cpu));
+	}
+}
 
 static inline void set_cpu_sd_state_busy(void)
 {
@@ -7433,7 +7421,6 @@ unlock:
  */
 void nohz_balance_enter_idle(int cpu)
 {
-#ifndef	CONFIG_BLD
 	/*
 	 * If this cpu is going down, then nothing needs to be done.
 	 */
@@ -7452,9 +7439,22 @@ void nohz_balance_enter_idle(int cpu)
 	cpumask_set_cpu(cpu, nohz.idle_cpus_mask);
 	atomic_inc(&nohz.nr_cpus);
 	set_bit(NOHZ_TICK_STOPPED, nohz_flags(cpu));
-#endif
+}
+
+static int sched_ilb_notifier(struct notifier_block *nfb,
+					unsigned long action, void *hcpu)
+{
+	switch (action & ~CPU_TASKS_FROZEN) {
+	case CPU_DYING:
+		nohz_balance_exit_idle(smp_processor_id());
+		return NOTIFY_OK;
+	default:
+		return NOTIFY_DONE;
+	}
 }
 #endif
+
+static DEFINE_SPINLOCK(balancing);
 
 /*
  * Scale the max load_balance interval with the number of CPUs in the system.
@@ -7464,9 +7464,6 @@ void update_max_interval(void)
 {
 	max_load_balance_interval = HZ*num_online_cpus()/10;
 }
-
-#ifndef	CONFIG_BLD
-static DEFINE_SPINLOCK(balancing);
 
 /*
  * It checks each scheduling domain to see if it is due to be balanced,
@@ -7716,7 +7713,6 @@ void trigger_load_balance(struct rq *rq)
 		nohz_balancer_kick();
 #endif
 }
-#endif	/* CONFIG_BLD */
 
 static void rq_online_fair(struct rq *rq)
 {
@@ -8162,9 +8158,7 @@ const struct sched_class fair_sched_class = {
 	.put_prev_task		= put_prev_task_fair,
 
 #ifdef CONFIG_SMP
-#ifndef	CONFIG_BLD
 	.select_task_rq		= select_task_rq_fair,
-#endif
 	.migrate_task_rq	= migrate_task_rq_fair,
 
 	.rq_online		= rq_online_fair,
@@ -8204,7 +8198,6 @@ void print_cfs_stats(struct seq_file *m, int cpu)
 
 __init void init_sched_fair_class(void)
 {
-#ifndef	CONFIG_BLD
 #ifdef CONFIG_SMP
 	open_softirq(SCHED_SOFTIRQ, run_rebalance_domains);
 
@@ -8214,5 +8207,5 @@ __init void init_sched_fair_class(void)
 	cpu_notifier(sched_ilb_notifier, 0);
 #endif
 #endif /* SMP */
-#endif /* BLD */
+
 }

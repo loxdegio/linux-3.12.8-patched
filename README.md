@@ -1,4 +1,4 @@
-linux-3.19.x-patched
+linux-4.0.x-patched
 ====================
 
 Versione del geek kernel con le patch scelte da me

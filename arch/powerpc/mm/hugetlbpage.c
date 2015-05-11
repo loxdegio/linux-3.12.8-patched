@@ -581,6 +581,7 @@ static void hugetlb_free_pmd_range(struct mmu_gather *tlb, pud_t *pud,
 	pmd = pmd_offset(pud, start);
 	pud_clear(pud);
 	pmd_free_tlb(tlb, pmd, start);
+	mm_dec_nr_pmds(tlb->mm);
 }
 
 static void hugetlb_free_pud_range(struct mmu_gather *tlb, pgd_t *pgd,
@@ -709,6 +710,14 @@ follow_huge_addr(struct mm_struct *mm, unsigned long address, int write)
 struct page *
 follow_huge_pmd(struct mm_struct *mm, unsigned long address,
 		pmd_t *pmd, int write)
+{
+	BUG();
+	return NULL;
+}
+
+struct page *
+follow_huge_pud(struct mm_struct *mm, unsigned long address,
+		pud_t *pud, int write)
 {
 	BUG();
 	return NULL;
