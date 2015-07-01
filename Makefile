@@ -1,6 +1,6 @@
 VERSION = 4
 PATCHLEVEL = 0
-SUBLEVEL = 6
+SUBLEVEL = 7
 EXTRAVERSION = -geek
 NAME = The grass is always greener on the other side of the force
 
@@ -373,11 +373,11 @@ CHECKFLAGS     := -D__linux__ -Dlinux -D__STDC__ -Dunix -D__unix__ \
 		  -Wbitwise -Wno-return-void $(CF)
 OFLAGS			= -g0 -march=native -O3
 		  
-CFLAGS_MODULE   = $(OFLAGS)
-AFLAGS_MODULE   = $(OFLAGS)
+CFLAGS_MODULE   = $(CFLAGS)
+AFLAGS_MODULE   = $(CFLAGS)
 LDFLAGS_MODULE  =
-CFLAGS_KERNEL	= $(OFLAGS)
-AFLAGS_KERNEL	= $(OFLAGS)
+CFLAGS_KERNEL	= $(CFLAGS)
+AFLAGS_KERNEL	= $(CFLAGS)
 CFLAGS_GCOV	= -fprofile-arcs -ftest-coverage
 
 
