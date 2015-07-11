@@ -1,5 +1,18 @@
 /*
  * Copyright (C) 2005-2015 Junjiro R. Okajima
+ *
+ * This program, aufs is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 /*
@@ -150,13 +163,15 @@ int au_sbr_realloc(struct au_sbinfo *sbinfo, int nbr)
 unsigned int au_sigen_inc(struct super_block *sb)
 {
 	unsigned int gen;
+	struct inode *inode;
 
 	SiMustWriteLock(sb);
 
 	gen = ++au_sbi(sb)->si_generation;
 	au_update_digen(sb->s_root);
-	au_update_iigen(sb->s_root->d_inode, /*half*/0);
-	sb->s_root->d_inode->i_version++;
+	inode = d_inode(sb->s_root);
+	au_update_iigen(inode, /*half*/0);
+	inode->i_version++;
 	return gen;
 }
 

@@ -70,6 +70,9 @@
 #include <linux/pm_runtime.h>
 #include <linux/platform_device.h>
 
+#define CREATE_TRACE_POINTS
+#include <trace/events/libata.h>
+
 #include "libata.h"
 #include "libata-transport.h"
 
@@ -691,11 +694,11 @@ static int ata_rwcmd_protocol(struct ata_taskfile *tf, struct ata_device *dev)
  *	RETURNS:
  *	Block address read from @tf.
  */
-u64 ata_tf_read_block(struct ata_taskfile *tf, struct ata_device *dev)
+u64 ata_tf_read_block(const struct ata_taskfile *tf, struct ata_device *dev)
 {
 	u64 block = 0;
 
-	if (tf->flags & ATA_TFLAG_LBA) {
+	if (!dev || tf->flags & ATA_TFLAG_LBA) {
 		if (tf->flags & ATA_TFLAG_LBA48) {
 			block |= (u64)tf->hob_lbah << 40;
 			block |= (u64)tf->hob_lbam << 32;
@@ -2147,6 +2150,24 @@ static int ata_dev_config_ncq(struct ata_device *dev,
 	return 0;
 }
 
+static void ata_dev_config_sense_reporting(struct ata_device *dev)
+{
+	unsigned int err_mask;
+
+	if (!ata_id_has_sense_reporting(dev->id))
+		return;
+
+	if (ata_id_sense_reporting_enabled(dev->id))
+		return;
+
+	err_mask = ata_dev_set_feature(dev, SETFEATURE_SENSE_DATA, 0x1);
+	if (err_mask) {
+		ata_dev_dbg(dev,
+			    "failed to enable Sense Data Reporting, Emask 0x%x\n",
+			    err_mask);
+	}
+}
+
 /**
  *	ata_dev_configure - Configure the specified ATA/ATAPI device
  *	@dev: Target device to configure
@@ -2369,7 +2390,7 @@ int ata_dev_configure(struct ata_device *dev)
 					dev->devslp_timing[i] = sata_setting[j];
 				}
 		}
-
+		ata_dev_config_sense_reporting(dev);
 		dev->cdb_len = 16;
 	}
 
@@ -3666,6 +3687,10 @@ int sata_link_scr_lpm(struct ata_link *link, enum ata_lpm_policy policy,
 		}
 		break;
 	case ATA_LPM_MED_POWER:
+		/* allow LPM to PARTIAL */
+		scontrol &= ~(0x1 << 8);
+		scontrol |= (0x6 << 8);
+		break;
 	case ATA_LPM_MIN_POWER:
 		if (ata_link_nr_enabled(link) > 0)
 			/* no restrictions on LPM transitions */
@@ -4901,6 +4926,7 @@ void ata_qc_complete(struct ata_queued_cmd *qc)
 		 */
 		if (unlikely(ata_tag_internal(qc->tag))) {
 			fill_result_tf(qc);
+			trace_ata_qc_complete_internal(qc);
 			__ata_qc_complete(qc);
 			return;
 		}
@@ -4911,6 +4937,7 @@ void ata_qc_complete(struct ata_queued_cmd *qc)
 		 */
 		if (unlikely(qc->flags & ATA_QCFLAG_FAILED)) {
 			fill_result_tf(qc);
+			trace_ata_qc_complete_failed(qc);
 			ata_qc_schedule_eh(qc);
 			return;
 		}
@@ -4921,6 +4948,7 @@ void ata_qc_complete(struct ata_queued_cmd *qc)
 		if (qc->flags & ATA_QCFLAG_RESULT_TF)
 			fill_result_tf(qc);
 
+		trace_ata_qc_complete_done(qc);
 		/* Some commands need post-processing after successful
 		 * completion.
 		 */
@@ -5068,7 +5096,7 @@ void ata_qc_issue(struct ata_queued_cmd *qc)
 	}
 
 	ap->ops->qc_prep(qc);
-
+	trace_ata_qc_issue(qc);
 	qc->err_mask |= ap->ops->qc_issue(qc);
 	if (unlikely(qc->err_mask))
 		goto err;

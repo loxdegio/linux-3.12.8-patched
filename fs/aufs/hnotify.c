@@ -1,5 +1,18 @@
 /*
  * Copyright (C) 2005-2015 Junjiro R. Okajima
+ *
+ * This program, aufs is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 /*
@@ -158,10 +171,10 @@ static int hn_gen_tree(struct dentry *dentry)
 				continue;
 
 			au_digen_dec(d);
-			if (d->d_inode)
+			if (d_really_is_positive(d))
 				/* todo: reset children xino?
 				   cached children only? */
-				au_iigen_dec(d->d_inode);
+				au_iigen_dec(d_inode(d));
 		}
 	}
 
@@ -239,12 +252,8 @@ out:
 static int hn_gen_by_name(struct dentry *dentry, const unsigned int isdir)
 {
 	int err;
-	struct inode *inode;
 
-	inode = dentry->d_inode;
-	if (IS_ROOT(dentry)
-	    /* || (inode && inode->i_ino == AUFS_ROOT_INO) */
-		) {
+	if (IS_ROOT(dentry)) {
 		pr_warn("branch root dir was changed\n");
 		return 0;
 	}
@@ -252,11 +261,11 @@ static int hn_gen_by_name(struct dentry *dentry, const unsigned int isdir)
 	err = 0;
 	if (!isdir) {
 		au_digen_dec(dentry);
-		if (inode)
-			au_iigen_dec(inode);
+		if (d_really_is_positive(dentry))
+			au_iigen_dec(d_inode(dentry));
 	} else {
 		au_fset_si(au_sbi(dentry->d_sb), FAILED_REFRESH_DIR);
-		if (inode)
+		if (d_really_is_positive(dentry))
 			err = hn_gen_tree(dentry);
 	}
 
@@ -476,8 +485,8 @@ static void au_hn_bh(void *_args)
 		dentry = lookup_wlock_by_name(a->h_child_name, a->h_child_nlen,
 					      a->dir);
 	try_iput = 0;
-	if (dentry)
-		inode = dentry->d_inode;
+	if (dentry && d_really_is_positive(dentry))
+		inode = d_inode(dentry);
 	if (xino && !inode && h_ino
 	    && (au_ftest_hnjob(a->flags[AuHn_CHILD], XINO0)
 		|| au_ftest_hnjob(a->flags[AuHn_CHILD], TRYXINO0)

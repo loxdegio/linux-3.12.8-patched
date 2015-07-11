@@ -1,5 +1,18 @@
 /*
  * Copyright (C) 2005-2015 Junjiro R. Okajima
+ *
+ * This program, aufs is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 /*
@@ -31,7 +44,6 @@ enum {
 	Opt_warn_perm, Opt_nowarn_perm,
 	Opt_wbr_copyup, Opt_wbr_create,
 	Opt_fhsm_sec,
-	Opt_refrof, Opt_norefrof,
 	Opt_verbose, Opt_noverbose,
 	Opt_sum, Opt_nosum, Opt_wsum,
 	Opt_dirperm1, Opt_nodirperm1,
@@ -114,9 +126,6 @@ static match_table_t options = {
 
 	{Opt_dirperm1, "dirperm1"},
 	{Opt_nodirperm1, "nodirperm1"},
-
-	{Opt_refrof, "refrof"},
-	{Opt_norefrof, "norefrof"},
 
 	{Opt_verbose, "verbose"},
 	{Opt_verbose, "v"},
@@ -683,12 +692,6 @@ static void dump_opts(struct au_opts *opts)
 		case Opt_nowarn_perm:
 			AuLabel(nowarn_perm);
 			break;
-		case Opt_refrof:
-			AuLabel(refrof);
-			break;
-		case Opt_norefrof:
-			AuLabel(norefrof);
-			break;
 		case Opt_verbose:
 			AuLabel(verbose);
 			break;
@@ -1175,8 +1178,6 @@ int au_opts_parse(struct super_block *sb, char *str, struct au_opts *opts)
 		case Opt_diropq_w:
 		case Opt_warn_perm:
 		case Opt_nowarn_perm:
-		case Opt_refrof:
-		case Opt_norefrof:
 		case Opt_verbose:
 		case Opt_noverbose:
 		case Opt_sum:
@@ -1364,13 +1365,6 @@ static int au_opt_simple(struct super_block *sb, struct au_opt *opt,
 		break;
 	case Opt_nowarn_perm:
 		au_opt_clr(sbinfo->si_mntflags, WARN_PERM);
-		break;
-
-	case Opt_refrof:
-		au_opt_set(sbinfo->si_mntflags, REFROF);
-		break;
-	case Opt_norefrof:
-		au_opt_clr(sbinfo->si_mntflags, REFROF);
 		break;
 
 	case Opt_verbose:
@@ -1605,7 +1599,7 @@ int au_opts_verify(struct super_block *sb, unsigned long sb_flags,
 	err = 0;
 	fhsm = 0;
 	root = sb->s_root;
-	dir = root->d_inode;
+	dir = d_inode(root);
 	do_plink = !!au_opt_test(sbinfo->si_mntflags, PLINK);
 	bend = au_sbend(sb);
 	for (bindex = 0; !err && bindex <= bend; bindex++) {
@@ -1778,7 +1772,7 @@ int au_opts_mount(struct super_block *sb, struct au_opts *opts)
 		/* go on even if err */
 	}
 	if (au_opt_test(tmp, UDBA_HNOTIFY)) {
-		dir = sb->s_root->d_inode;
+		dir = d_inode(sb->s_root);
 		au_hn_reset(dir, au_hi_flags(dir, /*isdir*/1) & ~AuHi_XINO);
 	}
 
@@ -1796,7 +1790,7 @@ int au_opts_remount(struct super_block *sb, struct au_opts *opts)
 
 	SiMustWriteLock(sb);
 
-	dir = sb->s_root->d_inode;
+	dir = d_inode(sb->s_root);
 	sbinfo = au_sbi(sb);
 	err = 0;
 	opt_xino = NULL;

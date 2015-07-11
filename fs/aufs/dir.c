@@ -1,5 +1,18 @@
 /*
  * Copyright (C) 2005-2015 Junjiro R. Okajima
+ *
+ * This program, aufs is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 /*
@@ -67,8 +80,8 @@ loff_t au_dir_size(struct file *file, struct dentry *dentry)
 		     bindex <= bend && sz < KMALLOC_MAX_SIZE;
 		     bindex++) {
 			h_dentry = au_h_dptr(dentry, bindex);
-			if (h_dentry && h_dentry->d_inode)
-				sz += i_size_read(h_dentry->d_inode);
+			if (h_dentry && d_is_positive(h_dentry))
+				sz += i_size_read(d_inode(h_dentry));
 		}
 	}
 	if (sz < KMALLOC_MAX_SIZE)
@@ -100,12 +113,12 @@ static void au_do_dir_ts(void *arg)
 	aufs_bindex_t bstart, bindex;
 
 	sb = a->dentry->d_sb;
-	dir = a->dentry->d_inode;
-	if (!dir)
+	if (d_really_is_negative(a->dentry))
 		goto out;
-	/* no dir->i_mutex lock */
 	aufs_read_lock(a->dentry, AuLock_DW | AuLock_DIR); /* noflush */
 
+	/* no dir->i_mutex lock */
+	dir = d_inode(a->dentry);
 	bstart = au_ibstart(dir);
 	bindex = au_br_index(sb, a->brid);
 	if (bindex < bstart)
@@ -243,7 +256,7 @@ static int do_open_dir(struct file *file, int flags, struct file *h_file)
 
 	err = 0;
 	dentry = file->f_path.dentry;
-	file->f_version = dentry->d_inode->i_version;
+	file->f_version = d_inode(dentry)->i_version;
 	bindex = au_dbstart(dentry);
 	au_set_fbstart(file, bindex);
 	btail = au_dbtaildir(dentry);
@@ -367,7 +380,7 @@ static int au_do_fsync_dir_no_file(struct dentry *dentry, int datasync)
 
 	err = 0;
 	sb = dentry->d_sb;
-	inode = dentry->d_inode;
+	inode = d_inode(dentry);
 	IMustLock(inode);
 	bend = au_dbend(dentry);
 	for (bindex = au_dbstart(dentry); !err && bindex <= bend; bindex++) {
@@ -421,12 +434,14 @@ static int aufs_fsync_dir(struct file *file, loff_t start, loff_t end,
 {
 	int err;
 	struct dentry *dentry;
+	struct inode *inode;
 	struct super_block *sb;
 	struct mutex *mtx;
 
 	err = 0;
 	dentry = file->f_path.dentry;
-	mtx = &dentry->d_inode->i_mutex;
+	inode = d_inode(dentry);
+	mtx = &inode->i_mutex;
 	mutex_lock(mtx);
 	sb = dentry->d_sb;
 	si_noflush_read_lock(sb);
@@ -436,7 +451,7 @@ static int aufs_fsync_dir(struct file *file, loff_t start, loff_t end,
 		di_write_lock_child(dentry);
 		err = au_do_fsync_dir_no_file(dentry, datasync);
 	}
-	au_cpup_attr_timesizes(dentry->d_inode);
+	au_cpup_attr_timesizes(inode);
 	di_write_unlock(dentry);
 	if (file)
 		fi_write_unlock(file);
@@ -458,7 +473,7 @@ static int aufs_iterate(struct file *file, struct dir_context *ctx)
 	AuDbg("%pD, ctx{%pf, %llu}\n", file, ctx->actor, ctx->pos);
 
 	dentry = file->f_path.dentry;
-	inode = dentry->d_inode;
+	inode = d_inode(dentry);
 	IMustLock(inode);
 
 	sb = dentry->d_sb;
@@ -614,7 +629,7 @@ static int sio_test_empty(struct dentry *dentry, struct test_empty_arg *arg)
 	struct inode *h_inode;
 
 	h_dentry = au_h_dptr(dentry, arg->bindex);
-	h_inode = h_dentry->d_inode;
+	h_inode = d_inode(h_dentry);
 	/* todo: i_mode changes anytime? */
 	mutex_lock_nested(&h_inode->i_mutex, AuLsc_I_CHILD);
 	err = au_test_h_perm_sio(h_inode, MAY_EXEC | MAY_READ);
@@ -679,7 +694,7 @@ int au_test_empty_lower(struct dentry *dentry)
 		struct dentry *h_dentry;
 
 		h_dentry = au_h_dptr(dentry, bindex);
-		if (h_dentry && h_dentry->d_inode) {
+		if (h_dentry && d_is_positive(h_dentry)) {
 			arg.bindex = bindex;
 			err = test_empty(dentry, &arg);
 		}
@@ -711,7 +726,7 @@ int au_test_empty(struct dentry *dentry, struct au_nhash *whlist)
 		struct dentry *h_dentry;
 
 		h_dentry = au_h_dptr(dentry, bindex);
-		if (h_dentry && h_dentry->d_inode) {
+		if (h_dentry && d_is_positive(h_dentry)) {
 			arg.bindex = bindex;
 			err = sio_test_empty(dentry, &arg);
 		}

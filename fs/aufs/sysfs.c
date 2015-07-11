@@ -1,5 +1,18 @@
 /*
  * Copyright (C) 2005-2015 Junjiro R. Okajima
+ *
+ * This program, aufs is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 /*
@@ -10,7 +23,30 @@
 #include <linux/seq_file.h>
 #include "aufs.h"
 
+#ifdef CONFIG_AUFS_FS_MODULE
+/* this entry violates the "one line per file" policy of sysfs */
+static ssize_t config_show(struct kobject *kobj, struct kobj_attribute *attr,
+			   char *buf)
+{
+	ssize_t err;
+	static char *conf =
+/* this file is generated at compiling */
+#include "conf.str"
+		;
+
+	err = snprintf(buf, PAGE_SIZE, conf);
+	if (unlikely(err >= PAGE_SIZE))
+		err = -EFBIG;
+	return err;
+}
+
+static struct kobj_attribute au_config_attr = __ATTR_RO(config);
+#endif
+
 static struct attribute *au_attr[] = {
+#ifdef CONFIG_AUFS_FS_MODULE
+	&au_config_attr.attr,
+#endif
 	NULL,	/* need to NULL terminate the list of attributes */
 };
 

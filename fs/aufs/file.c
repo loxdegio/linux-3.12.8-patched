@@ -1,5 +1,18 @@
 /*
  * Copyright (C) 2005-2015 Junjiro R. Okajima
+ *
+ * This program, aufs is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 /*
@@ -35,15 +48,12 @@ struct file *au_h_open(struct dentry *dentry, aufs_bindex_t bindex, int flags,
 	/* a race condition can happen between open and unlink/rmdir */
 	h_file = ERR_PTR(-ENOENT);
 	h_dentry = au_h_dptr(dentry, bindex);
-	if (au_test_nfsd() && !h_dentry)
+	if (au_test_nfsd() && (!h_dentry || d_is_negative(h_dentry)))
 		goto out;
-	h_inode = h_dentry->d_inode;
-	if (au_test_nfsd() && !h_inode)
-		goto out;
+	h_inode = d_inode(h_dentry);
 	spin_lock(&h_dentry->d_lock);
 	err = (!d_unhashed(dentry) && d_unlinked(h_dentry))
-		|| !h_inode
-		/* || !dentry->d_inode->i_nlink */
+		/* || !d_inode(dentry)->i_nlink */
 		;
 	spin_unlock(&h_dentry->d_lock);
 	if (unlikely(err))
@@ -57,7 +67,7 @@ struct file *au_h_open(struct dentry *dentry, aufs_bindex_t bindex, int flags,
 		goto out;
 
 	/* drop flags for writing */
-	if (au_test_ro(sb, bindex, dentry->d_inode)) {
+	if (au_test_ro(sb, bindex, d_inode(dentry))) {
 		if (force_wr && !(flags & O_WRONLY))
 			force_wr = 0;
 		flags = au_file_roflags(flags);
@@ -120,7 +130,7 @@ static int au_cmoo(struct dentry *dentry)
 	struct au_hinode *hdir;
 
 	DiMustWriteLock(dentry);
-	IiMustWriteLock(dentry->d_inode);
+	IiMustWriteLock(d_inode(dentry));
 
 	err = 0;
 	if (IS_ROOT(dentry))
@@ -183,7 +193,7 @@ static int au_cmoo(struct dentry *dentry)
 
 	h_path.mnt = au_br_mnt(br);
 	h_path.dentry = au_h_dptr(dentry, cpg.bsrc);
-	hdir = au_hi(parent->d_inode, cpg.bsrc);
+	hdir = au_hi(d_inode(parent), cpg.bsrc);
 	delegated = NULL;
 	err = vfsub_unlink(hdir->hi_inode, &h_path, &delegated, /*force*/1);
 	au_unpin(&pin);
@@ -367,13 +377,13 @@ static int au_ready_to_write_wh(struct file *file, loff_t len,
 	};
 
 	au_update_dbstart(cpg.dentry);
-	inode = cpg.dentry->d_inode;
+	inode = d_inode(cpg.dentry);
 	h_inode = NULL;
 	if (au_dbstart(cpg.dentry) <= bcpup
 	    && au_dbend(cpg.dentry) >= bcpup) {
 		h_dentry = au_h_dptr(cpg.dentry, bcpup);
-		if (h_dentry)
-			h_inode = h_dentry->d_inode;
+		if (h_dentry && d_is_positive(h_dentry))
+			h_inode = d_inode(h_dentry);
 	}
 	hi_wh = au_hi_wh(inode, bcpup);
 	if (!hi_wh && !h_inode)
@@ -412,7 +422,7 @@ int au_ready_to_write(struct file *file, loff_t len, struct au_pin *pin)
 	};
 
 	sb = cpg.dentry->d_sb;
-	inode = cpg.dentry->d_inode;
+	inode = d_inode(cpg.dentry);
 	cpg.bsrc = au_fbstart(file);
 	err = au_test_ro(sb, cpg.bsrc, inode);
 	if (!err && (au_hf_top(file)->f_mode & FMODE_WRITE)) {
@@ -533,7 +543,7 @@ static int au_file_refresh_by_inode(struct file *file, int *need_reopen)
 	err = 0;
 	finfo = au_fi(file);
 	sb = cpg.dentry->d_sb;
-	inode = cpg.dentry->d_inode;
+	inode = d_inode(cpg.dentry);
 	cpg.bdst = au_ibstart(inode);
 	if (cpg.bdst == finfo->fi_btop || IS_ROOT(cpg.dentry))
 		goto out;
@@ -713,7 +723,7 @@ int au_reval_and_lock_fdi(struct file *file, int (*reopen)(struct file *file),
 
 	err = 0;
 	dentry = file->f_path.dentry;
-	inode = dentry->d_inode;
+	inode = d_inode(dentry);
 	sigen = au_sigen(dentry->d_sb);
 	fi_write_lock(file);
 	figen = au_figen(file);
@@ -761,8 +771,8 @@ static int aufs_readpage(struct file *file __maybe_unused, struct page *page)
 }
 
 /* it will never be called, but necessary to support O_DIRECT */
-static ssize_t aufs_direct_IO(int rw, struct kiocb *iocb,
-			      struct iov_iter *iter, loff_t offset)
+static ssize_t aufs_direct_IO(struct kiocb *iocb, struct iov_iter *iter,
+			      loff_t offset)
 { BUG(); return 0; }
 
 /* they will never be called. */

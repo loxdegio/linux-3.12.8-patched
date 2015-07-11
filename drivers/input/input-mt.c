@@ -376,22 +376,27 @@ static void input_mt_set_slots(struct input_mt *mt,
 	for (s = mt->slots; s != mt->slots + mt->num_slots; s++) {
 		if (!input_mt_is_active(s))
 			continue;
-		for (j = 0; j != num_pos; j++)
+
+		for (j = 0; j != num_pos; j++) {
 			if (w[j] < 0) {
 				slots[j] = s - mt->slots;
 				break;
 			}
+		}
+
 		w += num_pos;
 	}
 
 	for (s = mt->slots; s != mt->slots + mt->num_slots; s++) {
 		if (input_mt_is_active(s))
 			continue;
-		for (j = 0; j != num_pos; j++)
+
+		for (j = 0; j != num_pos; j++) {
 			if (slots[j] < 0) {
 				slots[j] = s - mt->slots;
 				break;
 			}
+		}
 	}
 }
 

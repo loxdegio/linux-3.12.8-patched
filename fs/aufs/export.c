@@ -1,5 +1,18 @@
 /*
  * Copyright (C) 2005-2015 Junjiro R. Okajima
+ *
+ * This program, aufs is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 /*
@@ -233,7 +246,7 @@ static struct dentry *decode_by_ino(struct super_block *sb, ino_t ino,
 		hlist_for_each_entry(d, &inode->i_dentry, d_u.d_alias) {
 			spin_lock(&d->d_lock);
 			if (!au_test_anon(d)
-			    && d->d_parent->d_inode->i_ino == dir_ino) {
+			    && d_inode(d->d_parent)->i_ino == dir_ino) {
 				dentry = dget_dlock(d);
 				spin_unlock(&d->d_lock);
 				break;
@@ -392,7 +405,7 @@ static struct dentry *au_lkup_by_ino(struct path *path, ino_t ino,
 		goto out_name;
 
 	/* do not call vfsub_lkup_one() */
-	dir = parent->d_inode;
+	dir = d_inode(parent);
 	mutex_lock(&dir->i_mutex);
 	dentry = vfsub_lookup_one_len(arg.name, parent, arg.namelen);
 	mutex_unlock(&dir->i_mutex);
@@ -400,7 +413,7 @@ static struct dentry *au_lkup_by_ino(struct path *path, ino_t ino,
 	if (IS_ERR(dentry))
 		goto out_name;
 	AuDebugOn(au_test_anon(dentry));
-	if (unlikely(!dentry->d_inode)) {
+	if (unlikely(d_really_is_negative(dentry))) {
 		dput(dentry);
 		dentry = ERR_PTR(-ENOENT);
 	}
@@ -541,10 +554,10 @@ struct dentry *decode_by_path(struct super_block *sb, ino_t ino, __u32 *fh,
 
 	dentry = ERR_PTR(-ENOENT);
 	AuDebugOn(au_test_anon(path.dentry));
-	if (unlikely(!path.dentry->d_inode))
+	if (unlikely(d_really_is_negative(path.dentry)))
 		goto out_path;
 
-	if (ino != path.dentry->d_inode->i_ino)
+	if (ino != d_inode(path.dentry)->i_ino)
 		dentry = au_lkup_by_ino(&path, ino, /*nsi_lock*/NULL);
 	else
 		dentry = dget(path.dentry);
@@ -625,7 +638,7 @@ aufs_fh_to_dentry(struct super_block *sb, struct fid *fid, int fh_len,
 
 accept:
 	if (!au_digen_test(dentry, au_sigen(sb))
-	    && dentry->d_inode->i_generation == fh[Fh_igen])
+	    && d_inode(dentry)->i_generation == fh[Fh_igen])
 		goto out_unlock; /* success */
 
 	dput(dentry);
@@ -709,7 +722,8 @@ static int aufs_encode_fh(struct inode *inode, __u32 *fh, int *max_len,
 		dput(dentry);
 		if (unlikely(!parent))
 			goto out_unlock;
-		dir = parent->d_inode;
+		if (d_really_is_positive(parent))
+			dir = d_inode(parent);
 	}
 
 	ii_read_lock_parent(dir);

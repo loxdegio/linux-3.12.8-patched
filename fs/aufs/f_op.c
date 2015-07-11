@@ -1,5 +1,18 @@
 /*
  * Copyright (C) 2005-2015 Junjiro R. Okajima
+ *
+ * This program, aufs is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 /*
@@ -292,8 +305,6 @@ static ssize_t au_do_iter(struct file *h_file, int rw, struct kiocb *kio,
 	ssize_t err;
 	struct file *file;
 	ssize_t (*iter)(struct kiocb *, struct iov_iter *);
-	ssize_t (*aio)(struct kiocb *, const struct iovec *, unsigned long,
-		       loff_t);
 
 	err = security_file_permission(h_file, rw);
 	if (unlikely(err))
@@ -301,24 +312,16 @@ static ssize_t au_do_iter(struct file *h_file, int rw, struct kiocb *kio,
 
 	err = -ENOSYS;
 	iter = NULL;
-	aio = NULL;
-	if (rw == MAY_READ) {
+	if (rw == MAY_READ)
 		iter = h_file->f_op->read_iter;
-		aio = h_file->f_op->aio_read;
-	} else if (rw == MAY_WRITE) {
+	else if (rw == MAY_WRITE)
 		iter = h_file->f_op->write_iter;
-		aio = h_file->f_op->aio_write;
-	}
 
 	file = kio->ki_filp;
 	kio->ki_filp = h_file;
 	if (iter) {
 		lockdep_off();
 		err = iter(kio, iov_iter);
-		lockdep_on();
-	} else if (aio) {
-		lockdep_off();
-		err = aio(kio, iov_iter->iov, iov_iter->nr_segs, kio->ki_pos);
 		lockdep_on();
 	} else
 		/* currently there is no such fs */

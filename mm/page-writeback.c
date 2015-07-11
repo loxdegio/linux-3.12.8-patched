@@ -71,7 +71,7 @@ static long ratelimit_pages = 32;
  * Start background writeback (via writeback threads) at this percentage
  */
 #ifdef CONFIG_ZEN_INTERACTIVE
-int dirty_background_ratio = 20;
+int dirty_background_ratio;
 #else
 int dirty_background_ratio = 10;
 #endif
@@ -80,7 +80,11 @@ int dirty_background_ratio = 10;
  * dirty_background_bytes starts at 0 (disabled) so that it is a function of
  * dirty_background_ratio * the amount of dirtyable memory
  */
+#ifdef CONFIG_ZEN_INTERACTIVE
+unsigned long dirty_background_bytes = 128 * 1024 * 1024;
+#else
 unsigned long dirty_background_bytes;
+#endif
 
 /*
  * free highmem will not be subtracted from the total free memory
@@ -92,7 +96,7 @@ int vm_highmem_is_dirtyable;
  * The generator of dirty data starts writeback at this percentage
  */
 #ifdef CONFIG_ZEN_INTERACTIVE
-int vm_dirty_ratio = 50;
+int vm_dirty_ratio;
 #else
 int vm_dirty_ratio = 20;
 #endif
@@ -101,7 +105,11 @@ int vm_dirty_ratio = 20;
  * vm_dirty_bytes starts at 0 (disabled) so that it is a function of
  * vm_dirty_ratio * the amount of dirtyable memory
  */
+#ifdef CONFIG_ZEN_INTERACTIVE
+unsigned long vm_dirty_bytes = 256 * 1024 * 1024;
+#else
 unsigned long vm_dirty_bytes;
+#endif
 
 /*
  * The interval between `kupdate'-style writebacks
@@ -2119,6 +2127,25 @@ void account_page_dirtied(struct page *page, struct address_space *mapping)
 EXPORT_SYMBOL(account_page_dirtied);
 
 /*
+ * Helper function for deaccounting dirty page without writeback.
+ *
+ * Doing this should *normally* only ever be done when a page
+ * is truncated, and is not actually mapped anywhere at all. However,
+ * fs/buffer.c does this when it notices that somebody has cleaned
+ * out all the buffers on a page without actually doing it through
+ * the VM. Can you say "ext3 is horribly ugly"? Thought you could.
+ */
+void account_page_cleaned(struct page *page, struct address_space *mapping)
+{
+	if (mapping_cap_account_dirty(mapping)) {
+		dec_zone_page_state(page, NR_FILE_DIRTY);
+		dec_bdi_stat(inode_to_bdi(mapping->host), BDI_RECLAIMABLE);
+		task_io_account_cancelled_write(PAGE_CACHE_SIZE);
+	}
+}
+EXPORT_SYMBOL(account_page_cleaned);
+
+/*
  * For address_spaces which do not use buffers.  Just tag the page as dirty in
  * its radix tree.
  *
@@ -2217,7 +2244,8 @@ int set_page_dirty(struct page *page)
 		 * it will confuse readahead and make it restart the size rampup
 		 * process. But it's a trivial problem.
 		 */
-		ClearPageReclaim(page);
+		if (PageReclaim(page))
+			ClearPageReclaim(page);
 #ifdef CONFIG_BLOCK
 		if (!spd)
 			spd = __set_page_dirty_buffers;

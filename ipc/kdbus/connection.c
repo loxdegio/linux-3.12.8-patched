@@ -130,8 +130,7 @@ static struct kdbus_conn *kdbus_conn_new(struct kdbus_ep *ep, bool privileged,
 	atomic_set(&conn->lost_count, 0);
 	INIT_DELAYED_WORK(&conn->work, kdbus_reply_list_scan_work);
 	conn->cred = get_current_cred();
-	conn->user_ns = get_user_ns(current_user_ns());
-	conn->pid_ns = get_pid_ns(task_active_pid_ns(current));
+	conn->pid = get_pid(task_pid(current));
 	get_fs_root(current->fs, &conn->root_path);
 	init_waitqueue_head(&conn->wait);
 	kdbus_queue_init(&conn->queue);
@@ -282,8 +281,7 @@ static void __kdbus_conn_free(struct kref *kref)
 	kdbus_pool_free(conn->pool);
 	kdbus_ep_unref(conn->ep);
 	path_put(&conn->root_path);
-	put_pid_ns(conn->pid_ns);
-	put_user_ns(conn->user_ns);
+	put_pid(conn->pid);
 	put_cred(conn->cred);
 	kfree(conn->description);
 	kfree(conn->quota);
@@ -615,9 +613,9 @@ bool kdbus_conn_has_name(struct kdbus_conn *conn, const char *name)
 }
 
 struct kdbus_quota {
-	uint32_t memory;
-	uint16_t msgs;
-	uint8_t fds;
+	u32 memory;
+	u16 msgs;
+	u8 fds;
 };
 
 /**
@@ -655,7 +653,7 @@ int kdbus_conn_quota_inc(struct kdbus_conn *c, struct kdbus_user *u,
 	 * allocation schemes. Furthermore, resource utilization should be
 	 * maximized, so only minimal resources stay reserved. However, we need
 	 * to adapt to a dynamic number of users, as we cannot know how many
-	 * users will talk to a connection. Therefore, the current allocations
+	 * users will talk to a connection. Therefore, the current allocation
 	 * works like this:
 	 * We limit the number of bytes in a destination's pool per sending
 	 * user. The space available for a user is 33% of the unused pool space
@@ -697,7 +695,7 @@ int kdbus_conn_quota_inc(struct kdbus_conn *c, struct kdbus_user *u,
 
 	/*
 	 * Pool owner slices are un-accounted slices; they can claim more
-	 * than 50% of the queue. However, the slice we're dealing with here
+	 * than 50% of the queue. However, the slices we're dealing with here
 	 * belong to the incoming queue, hence they are 'accounted' slices
 	 * to which the 50%-limit applies.
 	 */

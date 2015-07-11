@@ -135,7 +135,7 @@ static void __exit_signal(struct task_struct *tsk)
 	sig->inblock += task_io_get_inblock(tsk);
 	sig->oublock += task_io_get_oublock(tsk);
 	task_io_accounting_add(&sig->ioac, &tsk->ioac);
-	sig->sum_sched_runtime += tsk_seruntime(tsk);
+	sig->sum_sched_runtime += tsk->se.sum_exec_runtime;
 	sig->nr_threads--;
 	__unhash_process(tsk, group_dead);
 	write_sequnlock(&sig->stats_lock);
@@ -755,8 +755,6 @@ void do_exit(long code)
 	perf_event_exit_task(tsk);
 
 	cgroup_exit(tsk);
-
-	module_put(task_thread_info(tsk)->exec_domain->module);
 
 	/*
 	 * FIXME: do that only when needed, using sched_exit tracepoint

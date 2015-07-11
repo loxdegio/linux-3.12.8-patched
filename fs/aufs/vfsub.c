@@ -1,5 +1,18 @@
 /*
  * Copyright (C) 2005-2015 Junjiro R. Okajima
+ *
+ * This program, aufs is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 /*
@@ -41,7 +54,7 @@ struct file *vfsub_dentry_open(struct path *path, int flags)
 			   current_cred());
 	if (!IS_ERR_OR_NULL(file)
 	    && (file->f_mode & (FMODE_READ | FMODE_WRITE)) == FMODE_READ)
-		i_readcount_inc(path->dentry->d_inode);
+		i_readcount_inc(d_inode(path->dentry));
 
 	return file;
 }
@@ -119,7 +132,7 @@ int vfsub_kern_path(const char *name, unsigned int flags, struct path *path)
 	int err;
 
 	err = kern_path(name, flags, path);
-	if (!err && path->dentry->d_inode)
+	if (!err && d_is_positive(path->dentry))
 		vfsub_update_h_iattr(path, /*did*/NULL); /*ignore*/
 	return err;
 }
@@ -132,12 +145,12 @@ struct dentry *vfsub_lookup_one_len(const char *name, struct dentry *parent,
 	};
 
 	/* VFS checks it too, but by WARN_ON_ONCE() */
-	IMustLock(parent->d_inode);
+	IMustLock(d_inode(parent));
 
 	path.dentry = lookup_one_len(name, parent, len);
 	if (IS_ERR(path.dentry))
 		goto out;
-	if (path.dentry->d_inode)
+	if (d_is_positive(path.dentry))
 		vfsub_update_h_iattr(&path, /*did*/NULL); /*ignore*/
 
 out:
@@ -298,7 +311,7 @@ int vfsub_link(struct dentry *src_dentry, struct inode *dir, struct path *path,
 
 	IMustLock(dir);
 
-	err = au_test_nlink(src_dentry->d_inode);
+	err = au_test_nlink(d_inode(src_dentry));
 	if (unlikely(err))
 		return err;
 
@@ -596,7 +609,7 @@ int vfsub_trunc(struct path *h_path, loff_t length, unsigned int attr,
 		goto out;
 	}
 
-	h_inode = h_path->dentry->d_inode;
+	h_inode = d_inode(h_path->dentry);
 	h_sb = h_inode->i_sb;
 	lockdep_off();
 	sb_start_write(h_sb);
@@ -705,7 +718,7 @@ static void call_notify_change(void *args)
 	struct notify_change_args *a = args;
 	struct inode *h_inode;
 
-	h_inode = a->path->dentry->d_inode;
+	h_inode = d_inode(a->path->dentry);
 	IMustLock(h_inode);
 
 	*a->errp = -EPERM;
@@ -781,9 +794,11 @@ static void call_unlink(void *args)
 
 	if (!stop_sillyrename)
 		dget(d);
-	h_inode = d->d_inode;
-	if (h_inode)
+	h_inode = NULL;
+	if (d_is_positive(d)) {
+		h_inode = d_inode(d);
 		ihold(h_inode);
+	}
 
 	lockdep_off();
 	*a->errp = vfs_unlink(a->dir, d, a->delegated_inode);

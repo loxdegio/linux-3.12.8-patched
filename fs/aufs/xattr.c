@@ -1,5 +1,18 @@
 /*
  * Copyright (C) 2014-2015 Junjiro R. Okajima
+ *
+ * This program, aufs is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 /*
@@ -62,7 +75,7 @@ static int au_do_cpup_xattr(struct dentry *h_dst, struct dentry *h_src,
 		if (err == -ENODATA
 		    || (err == -EOPNOTSUPP
 			&& ((ignore_flags & au_xattr_out_of_list)
-			    || (au_test_nfs_noacl(h_src->d_inode)
+			    || (au_test_nfs_noacl(d_inode(h_src))
 				&& (!strcmp(name, XATTR_NAME_POSIX_ACL_ACCESS)
 				    || !strcmp(name,
 					       XATTR_NAME_POSIX_ACL_DEFAULT))))
@@ -74,7 +87,7 @@ static int au_do_cpup_xattr(struct dentry *h_dst, struct dentry *h_src,
 	}
 
 	/* unlock it temporary */
-	h_idst = h_dst->d_inode;
+	h_idst = d_inode(h_dst);
 	mutex_unlock(&h_idst->i_mutex);
 	err = vfsub_setxattr(h_dst, name, *buf, ssz, /*flags*/0);
 	mutex_lock_nested(&h_idst->i_mutex, AuLsc_I_CHILD2);
@@ -98,8 +111,8 @@ int au_cpup_xattr(struct dentry *h_dst, struct dentry *h_src, int ignore_flags,
 
 	/* try stopping to update the source inode while we are referencing */
 	/* there should not be the parent-child relationship between them */
-	h_isrc = h_src->d_inode;
-	h_idst = h_dst->d_inode;
+	h_isrc = d_inode(h_src);
+	h_idst = d_inode(h_dst);
 	mutex_unlock(&h_idst->i_mutex);
 	mutex_lock_nested(&h_isrc->i_mutex, AuLsc_I_CHILD);
 	mutex_lock_nested(&h_idst->i_mutex, AuLsc_I_CHILD2);

@@ -1,5 +1,18 @@
 /*
  * Copyright (C) 2005-2015 Junjiro R. Okajima
+ *
+ * This program, aufs is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 /*
@@ -173,10 +186,10 @@ int au_br_stfs(struct au_branch *br, struct aufs_stfs *stfs);
 static const loff_t au_loff_max = LLONG_MAX;
 
 int au_xib_trunc(struct super_block *sb);
-ssize_t xino_fread(au_readf_t func, struct file *file, void *buf, size_t size,
+ssize_t xino_fread(vfs_readf_t func, struct file *file, void *buf, size_t size,
 		   loff_t *pos);
-ssize_t xino_fwrite(au_writef_t func, struct file *file, void *buf, size_t size,
-		    loff_t *pos);
+ssize_t xino_fwrite(vfs_writef_t func, struct file *file, void *buf,
+		    size_t size, loff_t *pos);
 struct file *au_xino_create2(struct file *base_file, struct file *copy_src);
 struct file *au_xino_create(struct super_block *sb, char *fname, int silent);
 ino_t au_xino_new_ino(struct super_block *sb);

@@ -19,17 +19,20 @@ struct mem_cgroup;
 #ifdef CONFIG_KSM
 int ksm_madvise(struct vm_area_struct *vma, unsigned long start,
 		unsigned long end, int advice, unsigned long *vm_flags);
+int __ksm_enter(struct mm_struct *mm);
+void __ksm_exit(struct mm_struct *mm);
 
-/*
- * A KSM page is one of those write-protected "shared pages" or "merged pages"
- * which KSM maps into multiple mms, wherever identical anonymous page content
- * is found in VM_MERGEABLE vmas.  It's a PageAnon page, pointing not to any
- * anon_vma, but to that page's node of the stable tree.
- */
-static inline int PageKsm(struct page *page)
+static inline int ksm_fork(struct mm_struct *mm, struct mm_struct *oldmm)
 {
-	return ((unsigned long)page->mapping & PAGE_MAPPING_FLAGS) ==
-				(PAGE_MAPPING_ANON | PAGE_MAPPING_KSM);
+	if (test_bit(MMF_VM_MERGEABLE, &oldmm->flags))
+		return __ksm_enter(mm);
+	return 0;
+}
+
+static inline void ksm_exit(struct mm_struct *mm)
+{
+	if (test_bit(MMF_VM_MERGEABLE, &mm->flags))
+		__ksm_exit(mm);
 }
 
 static inline struct stable_node *page_stable_node(struct page *page)
@@ -61,33 +64,6 @@ struct page *ksm_might_need_to_copy(struct page *page,
 int rmap_walk_ksm(struct page *page, struct rmap_walk_control *rwc);
 void ksm_migrate_page(struct page *newpage, struct page *oldpage);
 
-#ifdef CONFIG_KSM_LEGACY
-int __ksm_enter(struct mm_struct *mm);
-void __ksm_exit(struct mm_struct *mm);
-static inline int ksm_fork(struct mm_struct *mm, struct mm_struct *oldmm)
-{
-	if (test_bit(MMF_VM_MERGEABLE, &oldmm->flags))
-		return __ksm_enter(mm);
-	return 0;
-}
-
-static inline void ksm_exit(struct mm_struct *mm)
-{
-	if (test_bit(MMF_VM_MERGEABLE, &mm->flags))
-		__ksm_exit(mm);
-}
-
-#elif defined(CONFIG_UKSM)
-static inline int ksm_fork(struct mm_struct *mm, struct mm_struct *oldmm)
-{
-	return 0;
-}
-
-static inline void ksm_exit(struct mm_struct *mm)
-{
-}
-#endif /* !CONFIG_UKSM */
-
 #else  /* !CONFIG_KSM */
 
 static inline int ksm_fork(struct mm_struct *mm, struct mm_struct *oldmm)
@@ -97,11 +73,6 @@ static inline int ksm_fork(struct mm_struct *mm, struct mm_struct *oldmm)
 
 static inline void ksm_exit(struct mm_struct *mm)
 {
-}
-
-static inline int PageKsm(struct page *page)
-{
-	return 0;
 }
 
 #ifdef CONFIG_MMU
@@ -134,7 +105,5 @@ static inline void ksm_migrate_page(struct page *newpage, struct page *oldpage)
 }
 #endif /* CONFIG_MMU */
 #endif /* !CONFIG_KSM */
-
-#include <linux/uksm.h>
 
 #endif /* __LINUX_KSM_H */

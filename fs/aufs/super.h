@@ -1,5 +1,18 @@
 /*
  * Copyright (C) 2005-2015 Junjiro R. Okajima
+ *
+ * This program, aufs is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 /*
@@ -12,13 +25,10 @@
 #ifdef __KERNEL__
 
 #include <linux/fs.h>
+#include <linux/kobject.h>
 #include "rwsem.h"
 #include "spl.h"
 #include "wkq.h"
-
-typedef ssize_t (*au_readf_t)(struct file *, char __user *, size_t, loff_t *);
-typedef ssize_t (*au_writef_t)(struct file *, const char __user *, size_t,
-			       loff_t *);
 
 /* policies to select one among multiple writable branches */
 struct au_wbr_copyup_operations {
@@ -134,8 +144,8 @@ struct au_sbinfo {
 	unsigned int		si_mntflags;
 
 	/* external inode number (bitmap and translation table) */
-	au_readf_t		si_xread;
-	au_writef_t		si_xwrite;
+	vfs_readf_t		si_xread;
+	vfs_writef_t		si_xwrite;
 	struct file		*si_xib;
 	struct mutex		si_xib_mtx; /* protect xib members */
 	unsigned long		*si_xib_buf;

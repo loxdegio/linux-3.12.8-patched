@@ -1,5 +1,18 @@
 /*
  * Copyright (C) 2005-2015 Junjiro R. Okajima
+ *
+ * This program, aufs is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 /*
@@ -245,7 +258,6 @@ static int aufs_show_options(struct seq_file *m, struct dentry *dentry)
 	AuBool(PLINK, plink);
 	AuBool(DIO, dio);
 	AuBool(DIRPERM1, dirperm1);
-	/* AuBool(REFROF, refrof); */
 
 	v = sbinfo->si_wbr_create;
 	if (v != AuWbrCreate_Def)
@@ -560,7 +572,7 @@ static int au_do_refresh(struct dentry *dentry, unsigned int dir_flags,
 	di_read_lock_parent(parent, AuLock_IR);
 	err = au_refresh_dentry(dentry, parent);
 	if (!err && dir_flags)
-		au_hn_reset(dentry->d_inode, dir_flags);
+		au_hn_reset(d_inode(dentry), dir_flags);
 	di_read_unlock(parent, AuLock_IR);
 	di_write_unlock(dentry);
 
@@ -573,14 +585,12 @@ static int au_do_refresh_d(struct dentry *dentry, unsigned int sigen,
 {
 	int err;
 	struct dentry *parent;
-	struct inode *inode;
 
 	err = 0;
 	parent = dget_parent(dentry);
 	if (!au_digen_test(parent, sigen) && au_digen_test(dentry, sigen)) {
-		inode = dentry->d_inode;
-		if (inode) {
-			if (!S_ISDIR(inode->i_mode))
+		if (d_really_is_positive(dentry)) {
+			if (!d_is_dir(dentry))
 				err = au_do_refresh(dentry, /*dir_flags*/0,
 						 parent);
 			else {
@@ -607,7 +617,7 @@ static int au_refresh_d(struct super_block *sb)
 	struct dentry **dentries, *d;
 	struct au_sbinfo *sbinfo;
 	struct dentry *root = sb->s_root;
-	const unsigned int dir_flags = au_hi_flags(root->d_inode, /*isdir*/1);
+	const unsigned int dir_flags = au_hi_flags(d_inode(root), /*isdir*/1);
 
 	err = au_dpages_init(&dpages, GFP_NOFS);
 	if (unlikely(err))
@@ -688,7 +698,7 @@ static void au_remount_refresh(struct super_block *sb)
 
 	root = sb->s_root;
 	DiMustNoWaiters(root);
-	inode = root->d_inode;
+	inode = d_inode(root);
 	IiMustNoWaiters(inode);
 
 	udba = au_opt_udba(sb);
@@ -768,7 +778,7 @@ static int aufs_remount_fs(struct super_block *sb, int *flags, char *data)
 		goto out_opts;
 
 	sbinfo = au_sbi(sb);
-	inode = root->d_inode;
+	inode = d_inode(root);
 	mutex_lock(&inode->i_mutex);
 	err = si_write_lock(sb, AuLock_FLUSH | AuLock_NOPLM);
 	if (unlikely(err))
@@ -894,7 +904,7 @@ static int aufs_fill_super(struct super_block *sb, void *raw_data,
 		goto out_info;
 	}
 	root = sb->s_root;
-	inode = root->d_inode;
+	inode = d_inode(root);
 
 	/*
 	 * actually we can parse options regardless aufs lock here.

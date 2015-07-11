@@ -1,5 +1,18 @@
 /*
  * Copyright (C) 2005-2015 Junjiro R. Okajima
+ *
+ * This program, aufs is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 /*
@@ -29,7 +42,6 @@ struct super_block;
 #define AuOpt_PLINK		(1 << 6)	/* pseudo-link */
 #define AuOpt_DIRPERM1		(1 << 7)	/* ignore the lower dir's perm
 						   bits */
-#define AuOpt_REFROF		(1 << 8)	/* unimplemented */
 #define AuOpt_ALWAYS_DIROPQ	(1 << 9)	/* policy to creating diropq */
 #define AuOpt_SUM		(1 << 10)	/* summation for statfs(2) */
 #define AuOpt_SUM_W		(1 << 11)	/* unimplemented */
