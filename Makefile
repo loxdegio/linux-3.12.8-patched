@@ -1,6 +1,6 @@
 VERSION = 4
 PATCHLEVEL = 1
-SUBLEVEL = 2
+SUBLEVEL = 6
 EXTRAVERSION = -geek
 NAME = Not the beeees
 
@@ -369,7 +369,7 @@ CHECK		= sparse
 
 CHECKFLAGS     := -D__linux__ -Dlinux -D__STDC__ -Dunix -D__unix__ \
 		  -Wbitwise -Wno-return-void $(CF)
-OFLAGS			= -g0 -march=native -O3
+OFLAGS			= -O2 -g0
 		  
 CFLAGS_MODULE   = $(OFLAGS)
 AFLAGS_MODULE   = $(OFLAGS)
@@ -785,10 +785,11 @@ endif
 include scripts/Makefile.kasan
 include scripts/Makefile.extrawarn
 
-# Add user supplied CPPFLAGS, AFLAGS and CFLAGS as the last assignments
-KBUILD_CPPFLAGS += $(KCPPFLAGS)
-KBUILD_AFLAGS += $(KAFLAGS)
-KBUILD_CFLAGS += $(KCFLAGS)
+# Add any arch overrides and user supplied CPPFLAGS, AFLAGS and CFLAGS as the
+# last assignments
+KBUILD_CPPFLAGS += $(ARCH_CPPFLAGS) $(KCPPFLAGS)
+KBUILD_AFLAGS   += $(ARCH_AFLAGS)   $(KAFLAGS)
+KBUILD_CFLAGS   += $(ARCH_CFLAGS)   $(KCFLAGS)
 
 # Use --build-id when available.
 LDFLAGS_BUILD_ID = $(patsubst -Wl$(comma)%,%,\

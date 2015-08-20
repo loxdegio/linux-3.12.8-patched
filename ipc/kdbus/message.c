@@ -671,7 +671,7 @@ static struct kdbus_staging *kdbus_staging_new(struct kdbus_bus *bus,
 	if (!staging)
 		return ERR_PTR(-ENOMEM);
 
-	staging->msg_seqnum = atomic64_inc_return(&bus->domain->last_id);
+	staging->msg_seqnum = atomic64_inc_return(&bus->last_message_id);
 	staging->n_parts = 0; /* we reserve n_parts, but don't enforce them */
 	staging->parts = (void *)(staging + 1);
 
@@ -886,9 +886,9 @@ struct kdbus_pool_slice *kdbus_staging_emit(struct kdbus_staging *staging,
 {
 	struct kdbus_item *item, *meta_items = NULL;
 	struct kdbus_pool_slice *slice = NULL;
-	size_t off, size, msg_size, meta_size;
+	size_t off, size, meta_size;
 	struct iovec *v;
-	u64 attach;
+	u64 attach, msg_size;
 	int ret;
 
 	/*
@@ -920,7 +920,7 @@ struct kdbus_pool_slice *kdbus_staging_emit(struct kdbus_staging *staging,
 
 	/* msg.size */
 	v->iov_len = sizeof(msg_size);
-	v->iov_base = &msg_size;
+	v->iov_base = (void __user *)&msg_size;
 	++v;
 
 	/* msg (after msg.size) plus items */
@@ -937,7 +937,7 @@ struct kdbus_pool_slice *kdbus_staging_emit(struct kdbus_staging *staging,
 	if (meta_size > 0) {
 		/* metadata items */
 		v->iov_len = meta_size;
-		v->iov_base = meta_items;
+		v->iov_base = (void __user *)meta_items;
 		++v;
 
 		/* padding after metadata */
@@ -946,6 +946,16 @@ struct kdbus_pool_slice *kdbus_staging_emit(struct kdbus_staging *staging,
 		++v;
 
 		msg_size = KDBUS_ALIGN8(msg_size) + meta_size;
+	} else {
+		/* metadata items */
+		v->iov_len = 0;
+		v->iov_base = (void __user *)zeros;
+		++v;
+
+		/* padding after metadata */
+		v->iov_len = 0;
+		v->iov_base = (void __user *)zeros;
+		++v;
 	}
 
 	/* ... payload iovecs are already filled in ... */
