@@ -160,10 +160,7 @@ static int nommu_vma_show(struct seq_file *m, struct vm_area_struct *vma,
 	file = vma->vm_file;
 
 	if (file) {
-		struct inode *inode;
-
-		file = vma_pr_or_file(vma);
-		inode = file_inode(file);
+		struct inode *inode = file_inode(vma->vm_file);
 		dev = inode->i_sb->s_dev;
 		ino = inode->i_ino;
 		pgoff = (loff_t)vma->vm_pgoff << PAGE_SHIFT;
@@ -183,7 +180,7 @@ static int nommu_vma_show(struct seq_file *m, struct vm_area_struct *vma,
 
 	if (file) {
 		seq_pad(m, ' ');
-		seq_path(m, &file->f_path, "");
+		seq_file_path(m, file, "");
 	} else if (mm) {
 		pid_t tid = pid_of_stack(priv, vma, is_pid);
 

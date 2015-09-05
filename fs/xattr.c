@@ -207,7 +207,6 @@ vfs_getxattr_alloc(struct dentry *dentry, const char *name, char **xattr_value,
 	*xattr_value = value;
 	return error;
 }
-EXPORT_SYMBOL(vfs_getxattr_alloc);
 
 /* Compare an extended attribute value with the given value */
 int vfs_xattr_cmp(struct dentry *dentry, const char *xattr_name,
@@ -299,18 +298,18 @@ vfs_removexattr(struct dentry *dentry, const char *name)
 
 	mutex_lock(&inode->i_mutex);
 	error = security_inode_removexattr(dentry, name);
-	if (error) {
-		mutex_unlock(&inode->i_mutex);
-		return error;
-	}
+	if (error)
+		goto out;
 
 	error = inode->i_op->removexattr(dentry, name);
-	mutex_unlock(&inode->i_mutex);
 
 	if (!error) {
 		fsnotify_xattr(dentry);
 		evm_inode_post_removexattr(dentry, name);
 	}
+
+out:
+	mutex_unlock(&inode->i_mutex);
 	return error;
 }
 EXPORT_SYMBOL_GPL(vfs_removexattr);
