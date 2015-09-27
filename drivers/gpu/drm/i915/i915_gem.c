@@ -4274,9 +4274,6 @@ i915_gem_busy_ioctl(struct drm_device *dev, void *data,
 	struct drm_i915_gem_object *obj;
 	int ret;
 
-	if (drm_core_check_feature(dev, DRIVER_MODESET))
-		return -ENODEV;
-
 	ret = i915_mutex_lock_interruptible(dev);
 	if (ret)
 		return ret;

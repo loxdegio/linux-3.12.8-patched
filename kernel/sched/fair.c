@@ -4449,7 +4449,6 @@ static void task_waking_fair(struct task_struct *p)
 	record_wakee(p);
 }
 
-#ifndef	CONFIG_BLD
 #ifdef CONFIG_FAIR_GROUP_SCHED
 /*
  * effective_load() calculates the load change as seen from the root_task_group
@@ -4929,7 +4928,6 @@ unlock:
 
 	return new_cpu;
 }
-#endif	/* CONFIG_BLD */
 
 /*
  * Called immediately before a task is migrated to a new cpu; task_cpu(p) and
@@ -5225,7 +5223,6 @@ simple:
 	return p;
 
 idle:
-#ifndef	CONFIG_BLD
 	new_tasks = idle_balance(rq);
 	/*
 	 * Because idle_balance() releases (and re-acquires) rq->lock, it is
@@ -5237,7 +5234,7 @@ idle:
 
 	if (new_tasks > 0)
 		goto again;
-#endif
+
 	return NULL;
 }
 
@@ -5949,9 +5946,8 @@ static unsigned long task_h_load(struct task_struct *p)
 }
 #endif
 
-#ifndef	CONFIG_BLD
-
 /********** Helpers for find_busiest_group ************************/
+
 enum group_type {
 	group_other = 0,
 	group_imbalanced,
@@ -6043,7 +6039,6 @@ static inline int get_sd_load_idx(struct sched_domain *sd,
 	return load_idx;
 }
 
-#endif	/* CONFIG_BLD */
 static unsigned long default_scale_cpu_capacity(struct sched_domain *sd, int cpu)
 {
 	if ((sd->flags & SD_SHARE_CPUCAPACITY) && (sd->span_weight > 1))
@@ -6171,7 +6166,6 @@ void update_group_capacity(struct sched_domain *sd, int cpu)
 	sdg->sgc->capacity = capacity;
 }
 
-#ifndef	CONFIG_BLD
 /*
  * Check whether the capacity of the rq has been noticeably reduced by side
  * activity. The imbalance_pct is used for the threshold.
@@ -7408,8 +7402,6 @@ static inline int on_null_domain(struct rq *rq)
 	return unlikely(!rcu_dereference_sched(rq->sd));
 }
 
-#endif	/* CONFIG_BLD */
-
 #ifdef CONFIG_NO_HZ_COMMON
 /*
  * idle load balancing details
@@ -7417,38 +7409,11 @@ static inline int on_null_domain(struct rq *rq)
  *   needed, they will kick the idle load balancer, which then does idle
  *   load balancing for all the idle CPUs.
  */
-#ifndef	CONFIG_BLD
 static struct {
 	cpumask_var_t idle_cpus_mask;
 	atomic_t nr_cpus;
 	unsigned long next_balance;     /* in jiffy units */
 } nohz ____cacheline_aligned;
-
-static inline void nohz_balance_exit_idle(int cpu)
-{
-	if (unlikely(test_bit(NOHZ_TICK_STOPPED, nohz_flags(cpu)))) {
-		/*
-		 * Completely isolated CPUs don't ever set, so we must test.
-		 */
-		if (likely(cpumask_test_cpu(cpu, nohz.idle_cpus_mask))) {
-			cpumask_clear_cpu(cpu, nohz.idle_cpus_mask);
-			atomic_dec(&nohz.nr_cpus);
-		}
-		clear_bit(NOHZ_TICK_STOPPED, nohz_flags(cpu));
-	}
-}
-
-static int sched_ilb_notifier(struct notifier_block *nfb,
-					unsigned long action, void *hcpu)
-{
-	switch (action & ~CPU_TASKS_FROZEN) {
-	case CPU_DYING:
-		nohz_balance_exit_idle(smp_processor_id());
-		return NOTIFY_OK;
-	default:
-		return NOTIFY_DONE;
-	}
-}
 
 static inline int find_new_ilb(void)
 {
@@ -7487,7 +7452,20 @@ static void nohz_balancer_kick(void)
 	smp_send_reschedule(ilb_cpu);
 	return;
 }
-#endif	/* CONFIG_BLD */
+
+static inline void nohz_balance_exit_idle(int cpu)
+{
+	if (unlikely(test_bit(NOHZ_TICK_STOPPED, nohz_flags(cpu)))) {
+		/*
+		 * Completely isolated CPUs don't ever set, so we must test.
+		 */
+		if (likely(cpumask_test_cpu(cpu, nohz.idle_cpus_mask))) {
+			cpumask_clear_cpu(cpu, nohz.idle_cpus_mask);
+			atomic_dec(&nohz.nr_cpus);
+		}
+		clear_bit(NOHZ_TICK_STOPPED, nohz_flags(cpu));
+	}
+}
 
 static inline void set_cpu_sd_state_busy(void)
 {
@@ -7529,7 +7507,6 @@ unlock:
  */
 void nohz_balance_enter_idle(int cpu)
 {
-#ifndef	CONFIG_BLD
 	/*
 	 * If this cpu is going down, then nothing needs to be done.
 	 */
@@ -7548,9 +7525,22 @@ void nohz_balance_enter_idle(int cpu)
 	cpumask_set_cpu(cpu, nohz.idle_cpus_mask);
 	atomic_inc(&nohz.nr_cpus);
 	set_bit(NOHZ_TICK_STOPPED, nohz_flags(cpu));
-#endif
+}
+
+static int sched_ilb_notifier(struct notifier_block *nfb,
+					unsigned long action, void *hcpu)
+{
+	switch (action & ~CPU_TASKS_FROZEN) {
+	case CPU_DYING:
+		nohz_balance_exit_idle(smp_processor_id());
+		return NOTIFY_OK;
+	default:
+		return NOTIFY_DONE;
+	}
 }
 #endif
+
+static DEFINE_SPINLOCK(balancing);
 
 /*
  * Scale the max load_balance interval with the number of CPUs in the system.
@@ -7560,9 +7550,6 @@ void update_max_interval(void)
 {
 	max_load_balance_interval = HZ*num_online_cpus()/10;
 }
-
-#ifndef	CONFIG_BLD
-static DEFINE_SPINLOCK(balancing);
 
 /*
  * It checks each scheduling domain to see if it is due to be balanced,
@@ -7825,7 +7812,6 @@ void trigger_load_balance(struct rq *rq)
 		nohz_balancer_kick();
 #endif
 }
-#endif	/* CONFIG_BLD */
 
 static void rq_online_fair(struct rq *rq)
 {
@@ -8271,9 +8257,7 @@ const struct sched_class fair_sched_class = {
 	.put_prev_task		= put_prev_task_fair,
 
 #ifdef CONFIG_SMP
-#ifndef	CONFIG_BLD
 	.select_task_rq		= select_task_rq_fair,
-#endif
 	.migrate_task_rq	= migrate_task_rq_fair,
 
 	.rq_online		= rq_online_fair,
@@ -8313,7 +8297,6 @@ void print_cfs_stats(struct seq_file *m, int cpu)
 
 __init void init_sched_fair_class(void)
 {
-#ifndef	CONFIG_BLD
 #ifdef CONFIG_SMP
 	open_softirq(SCHED_SOFTIRQ, run_rebalance_domains);
 
@@ -8323,5 +8306,5 @@ __init void init_sched_fair_class(void)
 	cpu_notifier(sched_ilb_notifier, 0);
 #endif
 #endif /* SMP */
-#endif /* BLD */
+
 }

@@ -1,7 +1,7 @@
 VERSION = 4
 PATCHLEVEL = 1
-SUBLEVEL = 6
-EXTRAVERSION = -geek
+SUBLEVEL = 8
+EXTRAVERSION = -zenx
 NAME = Not the beeees
 
 # *DOCUMENTATION*
@@ -369,13 +369,11 @@ CHECK		= sparse
 
 CHECKFLAGS     := -D__linux__ -Dlinux -D__STDC__ -Dunix -D__unix__ \
 		  -Wbitwise -Wno-return-void $(CF)
-OFLAGS			= -g0 -O3
-		  
-CFLAGS_MODULE   = $(OFLAGS)
-AFLAGS_MODULE   = $(OFLAGS)
+CFLAGS_MODULE   =
+AFLAGS_MODULE   =
 LDFLAGS_MODULE  =
-CFLAGS_KERNEL	= $(OFLAGS)
-AFLAGS_KERNEL	= $(OFLAGS)
+CFLAGS_KERNEL	=
+AFLAGS_KERNEL	=
 CFLAGS_GCOV	= -fprofile-arcs -ftest-coverage
 
 

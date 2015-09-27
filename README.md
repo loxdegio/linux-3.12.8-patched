@@ -1,9 +1,9 @@
-linux-4.1.x-patched
+linux-4.1.x-zenx
 ====================
 
 Versione del geek kernel con le patch scelte da me
 
-bld zen
+zen uksm
 
 Se vuoi scaricare questo repo e rimanere aggiornato con tutte le modifiche digita su terminale:
 
