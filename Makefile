@@ -372,8 +372,8 @@ CHECKFLAGS     := -D__linux__ -Dlinux -D__STDC__ -Dunix -D__unix__ \
 CFLAGS_MODULE   = -O3
 AFLAGS_MODULE   = -O3
 LDFLAGS_MODULE  =
-CFLAGS_KERNEL	=
-AFLAGS_KERNEL	=
+CFLAGS_KERNEL	= -O2
+AFLAGS_KERNEL	= -O2
 CFLAGS_GCOV	= -fprofile-arcs -ftest-coverage
 
 
