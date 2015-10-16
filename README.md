@@ -3,7 +3,7 @@ linux-4.2.x-patched
 
 Versione del geek kernel con le patch scelte da me
 
-additional_cpu_optimizations fixes uksm zen
+bfs additional_cpu_optimizations fixes uksm zen
 
 Se vuoi scaricare questo repo e rimanere aggiornato con tutte le modifiche digita su terminale:
 
