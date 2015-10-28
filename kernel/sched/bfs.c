@@ -4688,7 +4688,7 @@ SYSCALL_DEFINE0(sched_yield)
 
 int __sched _cond_resched(void)
 {
-	if (should_resched()) {
+	if (should_resched(0)) {
 		preempt_schedule_common();
 		return 1;
 	}
@@ -4706,7 +4706,7 @@ EXPORT_SYMBOL(_cond_resched);
  */
 int __cond_resched_lock(spinlock_t *lock)
 {
-	int resched = should_resched();
+	int resched = should_resched(0);
 	int ret = 0;
 
 	lockdep_assert_held(lock);
