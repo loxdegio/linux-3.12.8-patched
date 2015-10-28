@@ -4728,7 +4728,7 @@ int __sched __cond_resched_softirq(void)
 {
 	BUG_ON(!in_softirq());
 
-	if (should_resched()) {
+	if (should_resched(0)) {
 		local_bh_enable();
 		preempt_schedule_common();
 		local_bh_disable();
